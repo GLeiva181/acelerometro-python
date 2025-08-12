@@ -19,34 +19,21 @@ from adxl355 import ADXL355
 CONFIG_FILE = "config.json"
 
 class Sensor:
-    """Gestiona la comunicación con el sensor MPU6050 o la simulación de datos."""
+    """Gestiona la comunicación con el sensor ADXL355 o la simulación de datos."""
     def __init__(self):
         self.sensor_detectado = False
         try:
-            import smbus
-            self.MPU6050_ADDR = 0x68
-            self.bus = smbus.SMBus(1)
-            self.bus.write_byte_data(self.MPU6050_ADDR, 0x6B, 0)
+            self.adxl355 = ADXL355()
             self.sensor_detectado = True
-            print("Sensor MPU6050 detectado correctamente.")
+            print("Sensor ADXL355 detectado correctamente.")
         except Exception as e:
-            print(f"Sensor MPU6050 no detectado: {e}")
-
-    def leer_word_2c(self, addr):
-        high = self.bus.read_byte_data(self.MPU6050_ADDR, addr)
-        low = self.bus.read_byte_data(self.MPU6050_ADDR, addr + 1)
-        val = (high << 8) + low
-        if val >= 0x8000: return -((65535 - val) + 1)
-        else: return val
+            print(f"Sensor ADXL355 no detectado: {e}")
 
     def leer_datos_reales(self):
         if not self.sensor_detectado: return 0.0, 0.0, 0.0, 0.0
-        accel_x = self.leer_word_2c(0x3B) / 16384.0
-        accel_y = self.leer_word_2c(0x3D) / 16384.0
-        accel_z = self.leer_word_2c(0x3F) / 16384.0
-        temp_raw = self.leer_word_2c(0x41)
-        temp = (temp_raw / 340.0) + 36.53
-        return accel_x, accel_y, accel_z, temp
+        axes = self.adxl355.get_axes_norm()
+        temp = self.adxl355.get_temperature()
+        return axes['x'], axes['y'], axes['z'], temp
 
     def leer_datos_simulados(self, event_state):
         if event_state == 'RECORDING' or (random.random() < 0.01 and event_state == 'IDLE'):

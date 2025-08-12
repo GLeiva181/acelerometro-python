@@ -44,7 +44,7 @@ RANGE_8G = 0x03
 READ_BIT = 0x01
 WRITE_BIT = 0x00
 DUMMY_BYTE = 0xAA
-MEASURE_MODE = 0x04 # Only accelerometer
+MEASURE_MODE = 0x04 # Enable accelerometer and temperature
 
 class ADXL355:
     """
@@ -173,14 +173,14 @@ class ADXL355:
         return {'x': x_data, 'y': y_data, 'z': z_data}
     
     def get_axes_norm(self):
-        measure_range=self.get_measure_range
+        measure_range=self.get_measure_range()
         raw=self.get_axes()
         if measure_range == 2:
-            scale_factor = 256000  # LSB por g en ±2g
+            scale_factor = 262144  # LSB/g for ±2g range (2^19 for 20-bit)
         elif measure_range == 4:
-            scale_factor = 128000  # LSB por g en ±4g
+            scale_factor = 131072  # LSB/g for ±4g range (2^18 for 20-bit)
         elif measure_range == 8:
-            scale_factor = 64000  # LSB por g en ±8g
+            scale_factor = 65536   # LSB/g for ±8g range (2^17 for 20-bit)
         else:
             raise ValueError("Invalid measure range value")
         accel_g = {axis: value / scale_factor for axis, value in raw.items()}
