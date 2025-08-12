@@ -3,7 +3,7 @@
     "auto_record": true,
     "thresh_x": "0.5",
     "thresh_y": "0.5",
-    "thresh_z": "0.1",
+    "thresh_z": "0.3",
     "cooldown": "2.0",
     "pre_record_time": "2.0",
     "time_window": "20",
@@ -24,5 +24,7 @@
             -0.13338588968900456,
             0.9722892761953477
         ]
-    ]
+    ],
+    "promedio_habilitado": true,
+    "promedio_muestras": "10"
 }

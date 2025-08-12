@@ -64,6 +64,9 @@ class AcelerometroApp:
         self.current_log_filename = None
         self.matriz_calibracion = np.eye(3)
         self.pre_event_buffer = deque(maxlen=40)
+        self.var_promedio_habilitado = tk.BooleanVar(value=False)
+        self.var_promedio_muestras = tk.StringVar(value='10')
+        self.datos_promedio = deque(maxlen=10)
         self.limpiar_datos_grafico()
 
     def crear_widgets(self):
@@ -162,6 +165,12 @@ class AcelerometroApp:
         graph_frame = ttk.LabelFrame(vis_tab, text="Configuración del Gráfico", padding=10); graph_frame.pack(fill=tk.X, pady=5, padx=5)
         self.var_time_window = tk.StringVar(value='10'); tk.Label(graph_frame, text="Ventana de tiempo (s):").pack(side=tk.LEFT); tk.Entry(graph_frame, textvariable=self.var_time_window, width=8).pack(side=tk.LEFT)
 
+        avg_frame = ttk.LabelFrame(vis_tab, text="Promediado de Señal", padding=10); avg_frame.pack(fill=tk.X, pady=5, padx=5)
+        tk.Checkbutton(avg_frame, text="Habilitar promediado de señal", variable=self.var_promedio_habilitado).pack(anchor='w')
+        avg_params_frame = tk.Frame(avg_frame); avg_params_frame.pack(fill=tk.X, pady=5)
+        tk.Label(avg_params_frame, text="Número de muestras para promediar:").grid(row=0, column=0, sticky='w')
+        tk.Entry(avg_params_frame, textvariable=self.var_promedio_muestras, width=8).grid(row=0, column=1, padx=5)
+
         mode_frame = ttk.LabelFrame(vis_tab, text="Modo de Operación", padding=10); mode_frame.pack(fill=tk.X, pady=5, padx=5)
         self.var_simulacion_activada = tk.BooleanVar(value=not self.sensor.sensor_detectado); tk.Checkbutton(mode_frame, text="Activar modo simulación", variable=self.var_simulacion_activada).pack(anchor='w')
 
@@ -187,7 +196,7 @@ class AcelerometroApp:
     def cargar_y_mostrar_archivo(self):
         filepath = filedialog.askopenfilename(
             title="Seleccionar archivo de datos",
-            filetypes=(("Text files", "*.txt"), ("All files", "*.*" ))
+            filetypes=(("Text files", "*.txt"), ("All files", "*.*"))
         )
         if not filepath: return
 
@@ -269,10 +278,24 @@ class AcelerometroApp:
         if self.pre_event_buffer.maxlen != max_len:
             self.pre_event_buffer = deque(list(self.pre_event_buffer), maxlen=max_len)
 
+        try:
+            num_muestras = int(self.var_promedio_muestras.get())
+        except ValueError:
+            num_muestras = 10
+        if self.datos_promedio.maxlen != num_muestras:
+            self.datos_promedio = deque(list(self.datos_promedio), maxlen=num_muestras)
+
         if not self.sensor.sensor_detectado and not self.var_simulacion_activada.get(): self.error_banner.pack(side=tk.BOTTOM, fill=tk.X)
         else: self.error_banner.pack_forget()
 
         x_raw, y_raw, z_raw, temp = self.leer_datos_sensor()
+
+        if self.var_promedio_habilitado.get():
+            self.datos_promedio.append((x_raw, y_raw, z_raw, temp))
+            if self.datos_promedio:
+                datos = np.array(list(self.datos_promedio))
+                x_raw, y_raw, z_raw, temp = np.mean(datos, axis=0)
+
         log_line = f"{datetime.now().isoformat()},{x_raw:.4f},{y_raw:.4f},{z_raw:.4f},{temp:.2f}\n"
         self.pre_event_buffer.append(log_line)
 
@@ -367,7 +390,9 @@ class AcelerometroApp:
             'pre_record_time': self.var_pre_record_time.get(),
             'time_window': self.var_time_window.get(),
             'simulacion': self.var_simulacion_activada.get(),
-            'matriz_calibracion': self.matriz_calibracion.tolist()
+            'matriz_calibracion': self.matriz_calibracion.tolist(),
+            'promedio_habilitado': self.var_promedio_habilitado.get(),
+            'promedio_muestras': self.var_promedio_muestras.get()
         }
         with open(CONFIG_FILE, 'w') as f:
             json.dump(config, f, indent=4)
@@ -387,6 +412,8 @@ class AcelerometroApp:
             self.var_pre_record_time.set(config.get('pre_record_time', '2.0'))
             self.var_time_window.set(config.get('time_window', '10'))
             self.var_simulacion_activada.set(config.get('simulacion', not self.sensor.sensor_detectado))
+            self.var_promedio_habilitado.set(config.get('promedio_habilitado', False))
+            self.var_promedio_muestras.set(config.get('promedio_muestras', '10'))
             
             matriz = config.get('matriz_calibracion')
             if matriz:

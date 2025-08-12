@@ -11,3 +11,6 @@ Interrupt 2	Not Connected
 Data Ready	Not Connected
 Digital Ground	09
 Digital Power	01
+
+Datasheet ADXL355:
+https://www.analog.com/media/en/technical-documentation/data-sheets/adxl354_adxl355.pdf
