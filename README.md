@@ -12,5 +12,11 @@
 | Digital Ground             |	09 |
 | Digital Power              |	01 |
 
+<img width="429" height="433" alt="image" src="https://github.com/user-attachments/assets/ad8cc7d5-1037-4552-b3ed-95a519c955e4" />
+<img width="744" height="497" alt="image" src="https://github.com/user-attachments/assets/30948772-9725-485a-a07c-f26d5f5b5180" />
+
 Datasheet ADXL355:
 https://www.analog.com/media/en/technical-documentation/data-sheets/adxl354_adxl355.pdf
+
+Datasheet ADXL355Z:
+https://www.analog.com/media/en/technical-documentation/user-guides/EVAL-ADXL354-355-UG-1030.pdf
