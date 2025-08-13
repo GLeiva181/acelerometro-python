@@ -1,3 +1,10 @@
+| Nombre    | Edad | Ciudad         |
+|-----------|------|----------------|
+| Ana       | 25   | Buenos Aires   |
+| Juan      | 30   | Córdoba        |
+| María     | 28   | Rosario        |
+
+
 ADXL Pin description	GPIO Pin
 Chip Select	24
 Master Out Slave In (MOSI)	19
