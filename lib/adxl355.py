@@ -34,6 +34,8 @@ FILTER = 0x28 # New constant for Filter register
 DEVID_AD = 0x00 # New constant for Device ID register
 TEMP02 = 0x06
 TEMP01 = 0x07
+FIFO_DATA = 0x11
+FIFA_ENTRY = 0x05
 
 
 # Data Range
@@ -54,6 +56,7 @@ class ADXL355:
     Allows user to read, write and obtain data
     from the accelerometers
     """
+    measure_range=-1
     def __init__(self, measure_range=RANGE_2G):
         # SPI init
         self.spi = spidev.SpiDev()
@@ -70,6 +73,7 @@ class ADXL355:
         self._set_measure_range(measure_range)
         self._set_odr(0x00) # Set ODR to 4000 Hz
         self._enable_measure_mode()
+        self.get_measure_range()
 
     def _set_odr(self, odr_value):
         """Sets the Output Data Rate (ODR) on ADXL355 device.
@@ -95,6 +99,11 @@ class ADXL355:
         device_address = address << 1 | WRITE_BIT
         self.spi.xfer2([device_address, value])
 
+    def spi_read(self, reg, length=1):
+        reg_addr = reg << 1 | READ_BIT # MSB=1 para lectura
+        resp = self.spi.xfer2([reg_addr] + [0x00] * length)
+        return resp[1:]
+    
     def read_data(self, address):
         """Reads data from ADXL355 device.
 
@@ -138,14 +147,15 @@ class ADXL355:
         range_value = self.read_data(RANGE) & 0x03
 
         if range_value == RANGE_2G:
-            return 2
+            self.measure_range=2
         elif range_value == RANGE_4G:
-            return 4
+            self.measure_range=4
         elif range_value == RANGE_8G:
-            return 8
+            self.measure_range=8
         else:
+            self.measure_range=-1
             raise ValueError("Invalid measure range value")
-        return -1
+        return self.measure_range
 
     def _enable_measure_mode(self):
         """
@@ -155,6 +165,13 @@ class ADXL355:
             None
         """
         self.write_data(POWER_CTL, MEASURE_MODE)
+
+    @staticmethod
+    def bytes_to_int20(b):
+        raw = (b[0] << 12) | (b[1] << 4) | (b[2] >> 4)
+        if raw & (1 << 19):  # Bit de signo
+            raw -= (1 << 20)
+        return raw
 
     def get_axes(self):
         """
@@ -168,6 +185,7 @@ class ADXL355:
         raw_data = self.read_multiple_data(
             [XDATA3, XDATA2, XDATA1, YDATA3, YDATA2, YDATA1, ZDATA3, ZDATA2, ZDATA1]
         )
+        # raw_data = self.read_data(XDATA3, 9)
 
         # Split data
         x_data = raw_data[0] << 16 | raw_data[1] << 8 | raw_data[2]
@@ -185,18 +203,18 @@ class ADXL355:
         # Return values
         return {'x': x_data, 'y': y_data, 'z': z_data}
     
-    def get_axes_norm(self):
-        measure_range=self.get_measure_range()
-        raw=self.get_axes()
-        if measure_range == 2:
-            scale_factor = 262144  # LSB/g for ±2g range (2^19 for 20-bit)
-        elif measure_range == 4:
-            scale_factor = 131072  # LSB/g for ±4g range (2^18 for 20-bit)
-        elif measure_range == 8:
-            scale_factor = 65536   # LSB/g for ±8g range (2^17 for 20-bit)
+    def get_axes_norm(self, axes):
+        
+        # raw=self.get_axes()
+        if self.measure_range == 2:
+            scale_factor = 256000  # LSB/g for ±2g range (2^19 for 20-bit)
+        elif self.measure_range == 4:
+            scale_factor = 128000   # LSB/g for ±4g range (2^18 for 20-bit)
+        elif self.measure_range == 8:
+            scale_factor = 64000  # LSB/g for ±8g range (2^17 for 20-bit)
         else:
             raise ValueError("Invalid measure range value")
-        accel_g = {axis: value / scale_factor for axis, value in raw.items()}
+        accel_g = {axis: value / scale_factor for axis, value in axes.items()}
         return accel_g
 
     def get_temperature(self):
@@ -210,4 +228,35 @@ class ADXL355:
         temp_c = 25 - (temp_raw - offset) / slope
         return temp_c
     
+    def fifo_entries(self):
+        return self.spi_read(FIFA_ENTRY)[0] & 0x3F
 
+    def read_fifo(self, samples):
+        fifo_entry=self.fifo_entries()
+        # num_samples = fifo_entry // 9
+        if fifo_entry >= samples:
+            fifo_data = self.spi_read(FIFO_DATA, samples * 9)
+
+            sum_x, sum_y, sum_z = 0, 0, 0
+            for i in range(samples):
+                start = i * 9
+                x_bytes = fifo_data[start : start + 3]      # bytes 0,1,2 → X
+                y_bytes = fifo_data[start + 3 : start + 6]  # bytes 3,4,5 → Y
+                z_bytes = fifo_data[start + 6 : start + 9]  # bytes 6,7,8 → Z
+
+                # convertir de 3 bytes a int20
+                x = self.bytes_to_int20(x_bytes)
+                y = self.bytes_to_int20(y_bytes)
+                z = self.bytes_to_int20(z_bytes)
+
+                sum_x += x
+                sum_y += y
+                sum_z += z
+
+            # Promedio de cada eje
+            avg_x = sum_x / samples
+            avg_y = sum_y / samples
+            avg_z = sum_z / samples
+            return self.get_axes_norm({'x': avg_x, 'y': avg_y, 'z': avg_z})
+        else:
+            return None

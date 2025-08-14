@@ -23,7 +23,7 @@
         ]
     ],
     "promedio_habilitado": true,
-    "promedio_muestras": "10",
+    "promedio_muestras": "1",
     "umbral_mode": "Relativo",
     "auto_center": true,
     "center_x": "0.0",

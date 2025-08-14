@@ -31,7 +31,8 @@ class Sensor:
 
     def leer_datos_reales(self):
         if not self.sensor_detectado: return 0.0, 0.0, 0.0, 0.0
-        axes = self.adxl355.get_axes_norm()
+        # axes = self.adxl355.get_axes_norm()
+        axes = self.adxl355.read_fifo(32)
         temp = self.adxl355.get_temperature()
         return axes['x'], axes['y'], axes['z'], temp
 
@@ -230,14 +231,7 @@ class AcelerometroApp:
         tk.Entry(self.relativo_frame, textvariable=self.var_delta_z, width=8).grid(row=3, column=3, padx=5, pady=2)
 
         self.absoluto_frame = tk.Frame(event_frame)
-        # absoluto_vars = [
-        #     ("Mín X:", self.var_min_x), ("Máx X:", self.var_max_x),
-        #     ("Mín Y:", self.var_min_y), ("Máx Y:", self.var_max_y),
-        #     ("Mín Z:", self.var_min_z), ("Máx Z:", self.var_max_z),
-        # ]
-        # for i, (txt, var) in enumerate(absoluto_vars):
-        #     tk.Label(self.absoluto_frame, text=txt).grid(row=i % 3, column=(i // 3) * 2, sticky='w', pady=2)
-        #     tk.Entry(self.absoluto_frame, textvariable=var, width=8).grid(row=i % 3, column=(i // 3) * 2 + 1, padx=5, pady=2)
+        
         tk.Label(self.absoluto_frame, text="Mín X:").grid(row=1, column=0, sticky='w', pady=2)
         self.entry_min_x = tk.Entry(self.absoluto_frame, textvariable=self.var_min_x, width=8); 
         self.entry_min_x.grid(row=1, column=1, padx=5, pady=2)
