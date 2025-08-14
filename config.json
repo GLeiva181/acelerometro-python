@@ -24,6 +24,7 @@
     ],
     "promedio_habilitado": true,
     "promedio_muestras": "1",
+    "samples_fifo": "32",
     "umbral_mode": "Relativo",
     "auto_center": true,
     "center_x": "0.0",

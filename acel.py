@@ -67,6 +67,7 @@ class AcelerometroApp:
         self.pre_event_buffer = deque(maxlen=40)
         self.var_promedio_habilitado = tk.BooleanVar(value=False)
         self.var_promedio_muestras = tk.StringVar(value='10')
+        self.var_samples_fifo = tk.StringVar(value='32')
         self.datos_promedio = deque(maxlen=10)
 
         # Nuevas variables para umbrales
@@ -255,11 +256,14 @@ class AcelerometroApp:
         graph_frame = ttk.LabelFrame(vis_tab, text="Configuración del Gráfico", padding=10); graph_frame.pack(fill=tk.X, pady=5, padx=5)
         self.var_time_window = tk.StringVar(value='10'); tk.Label(graph_frame, text="Ventana de tiempo (s):").pack(side=tk.LEFT); tk.Entry(graph_frame, textvariable=self.var_time_window, width=8).pack(side=tk.LEFT)
 
-        avg_frame = ttk.LabelFrame(vis_tab, text="Promediado de Señal", padding=10); avg_frame.pack(fill=tk.X, pady=5, padx=5)
+        avg_frame = ttk.LabelFrame(vis_tab, text="Promediado de Señal", padding=10); 
+        avg_frame.pack(fill=tk.X, pady=5, padx=5)
         tk.Checkbutton(avg_frame, text="Habilitar promediado de señal", variable=self.var_promedio_habilitado).pack(anchor='w')
         avg_params_frame = tk.Frame(avg_frame); avg_params_frame.pack(fill=tk.X, pady=5)
         tk.Label(avg_params_frame, text="Número de muestras para promediar:").grid(row=0, column=0, sticky='w')
         tk.Entry(avg_params_frame, textvariable=self.var_promedio_muestras, width=8).grid(row=0, column=1, padx=5)
+        tk.Label(avg_params_frame, text="Número de muestras leídas en FIFO:").grid(row=1, column=0, sticky='w')
+        tk.Entry(avg_params_frame, textvariable=self.var_samples_fifo, width=8).grid(row=1, column=1, padx=5)
 
         mode_frame = ttk.LabelFrame(vis_tab, text="Modo de Operación", padding=10); mode_frame.pack(fill=tk.X, pady=5, padx=5)
         self.var_simulacion_activada = tk.BooleanVar(value=not self.sensor.sensor_detectado); tk.Checkbutton(mode_frame, text="Activar modo simulación", variable=self.var_simulacion_activada).pack(anchor='w')
@@ -524,6 +528,7 @@ class AcelerometroApp:
             'matriz_calibracion': self.matriz_calibracion.tolist(),
             'promedio_habilitado': self.var_promedio_habilitado.get(),
             'promedio_muestras': self.var_promedio_muestras.get(),
+            'samples_fifo': self.var_samples_fifo.get(),
             # Nuevas variables de umbral
             'umbral_mode': self.var_umbral_mode.get(),
             'auto_center': self.var_auto_center.get(),
@@ -557,6 +562,7 @@ class AcelerometroApp:
             self.var_simulacion_activada.set(config.get('simulacion', not self.sensor.sensor_detectado))
             self.var_promedio_habilitado.set(config.get('promedio_habilitado', False))
             self.var_promedio_muestras.set(config.get('promedio_muestras', '10'))
+            self.var_samples_fifo.set(config.get('samples_fifo', '32'))
             
             self.var_umbral_mode.set(config.get('umbral_mode', 'Relativo'))
             self.var_auto_center.set(config.get('auto_center', False))
