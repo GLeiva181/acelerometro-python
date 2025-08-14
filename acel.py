@@ -19,6 +19,7 @@ from adxl355 import ADXL355
 CONFIG_FILE = "config.json"
 
 class Sensor:
+    last_correct_axes = (0,0,0)
     """Gestiona la comunicación con el sensor ADXL355 o la simulación de datos."""
     def __init__(self):
         self.sensor_detectado = False
@@ -33,6 +34,11 @@ class Sensor:
         if not self.sensor_detectado: return 0.0, 0.0, 0.0, 0.0
         # axes = self.adxl355.get_axes_norm()
         axes = self.adxl355.read_fifo(32)
+        if axes is None:
+            axes = self.last_correct_axes
+        else:
+            self.last_correct_axes = axes
+
         temp = self.adxl355.get_temperature()
         return axes['x'], axes['y'], axes['z'], temp
 
@@ -204,8 +210,10 @@ class AcelerometroApp:
         
         params_frame = tk.Frame(event_frame); params_frame.pack(fill=tk.X, pady=5)
         self.var_cooldown = tk.StringVar(value='2.0'); self.var_pre_record_time = tk.StringVar(value='2.0')
-        tk.Label(params_frame, text="Estabilidad (s):").grid(row=0, column=0, sticky='w'); tk.Entry(params_frame, textvariable=self.var_cooldown, width=8).grid(row=0, column=1, padx=5)
-        tk.Label(params_frame, text="Tiempo Pre-grabación (s):").grid(row=1, column=0, sticky='w'); tk.Entry(params_frame, textvariable=self.var_pre_record_time, width=8).grid(row=1, column=1, padx=5)
+        tk.Label(params_frame, text="Estabilidad (s):").grid(row=0, column=0, sticky='w'); 
+        tk.Entry(params_frame, textvariable=self.var_cooldown, width=8).grid(row=0, column=1, padx=5)
+        tk.Label(params_frame, text="Tiempo Pre-grabación (s):").grid(row=1, column=0, sticky='w'); 
+        tk.Entry(params_frame, textvariable=self.var_pre_record_time, width=8).grid(row=1, column=1, padx=5)
 
         umbral_mode_frame = ttk.LabelFrame(event_frame, text="Modo de Umbral de Estabilidad", padding=10); umbral_mode_frame.pack(fill=tk.X, pady=(10, 5), padx=5)
         tk.Radiobutton(umbral_mode_frame, text="Relativo (Centro ± Delta)", variable=self.var_umbral_mode, value="Relativo", command=self._actualizar_visibilidad_umbrales).pack(anchor='w')
@@ -366,23 +374,36 @@ class AcelerometroApp:
 
     def actualizar_datos(self):
         # --- Actualizar tamaños de buffers y deques según configuración ---
-        try: pre_record_time = float(self.var_pre_record_time.get()); max_len_pre = int(pre_record_time / 0.05)
+        sample_time=0.05
+        try: 
+            pre_record_time = float(self.var_pre_record_time.get()); 
+            max_len_pre = int(pre_record_time / sample_time)
         except ValueError: max_len_pre = 40
-        if self.pre_event_buffer.maxlen != max_len_pre: self.pre_event_buffer = deque(list(self.pre_event_buffer), maxlen=max_len_pre)
+        if self.pre_event_buffer.maxlen != max_len_pre: 
+            self.pre_event_buffer = deque(list(self.pre_event_buffer), maxlen=max_len_pre)
 
-        try: num_muestras = int(self.var_promedio_muestras.get())
+        try: 
+            num_muestras = int(self.var_promedio_muestras.get())
         except ValueError: num_muestras = 10
-        if self.datos_promedio.maxlen != num_muestras: self.datos_promedio = deque(list(self.datos_promedio), maxlen=num_muestras)
+        if self.datos_promedio.maxlen != num_muestras: 
+            self.datos_promedio = deque(list(self.datos_promedio), maxlen=num_muestras)
 
-        try: cooldown_duration = float(self.var_cooldown.get()); max_len_hist = int(cooldown_duration / 0.05)
+        try: 
+            cooldown_duration = float(self.var_cooldown.get()); 
+            max_len_hist = int(cooldown_duration / sample_time)
         except ValueError: max_len_hist = 40
-        if self.history_x.maxlen != max_len_hist: self.history_x = deque(list(self.history_x), maxlen=max_len_hist)
-        if self.history_y.maxlen != max_len_hist: self.history_y = deque(list(self.history_y), maxlen=max_len_hist)
-        if self.history_z.maxlen != max_len_hist: self.history_z = deque(list(self.history_z), maxlen=max_len_hist)
+        if self.history_x.maxlen != max_len_hist: 
+            self.history_x = deque(list(self.history_x), maxlen=max_len_hist)
+        if self.history_y.maxlen != max_len_hist: 
+            self.history_y = deque(list(self.history_y), maxlen=max_len_hist)
+        if self.history_z.maxlen != max_len_hist: 
+            self.history_z = deque(list(self.history_z), maxlen=max_len_hist)
 
         # --- Lectura y promediado de datos del sensor ---
-        if not self.sensor.sensor_detectado and not self.var_simulacion_activada.get(): self.error_banner.pack(side=tk.BOTTOM, fill=tk.X)
-        else: self.error_banner.pack_forget()
+        if not self.sensor.sensor_detectado and not self.var_simulacion_activada.get(): 
+            self.error_banner.pack(side=tk.BOTTOM, fill=tk.X)
+        else: 
+            self.error_banner.pack_forget()
 
         x_raw, y_raw, z_raw, temp = self.leer_datos_sensor()
 
