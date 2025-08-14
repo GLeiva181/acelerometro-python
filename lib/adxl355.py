@@ -30,6 +30,7 @@ ZDATA2 = 0x0F
 ZDATA1 = 0x10
 RANGE = 0x2C
 POWER_CTL = 0x2D
+FILTER = 0x28 # New constant for Filter register
 DEVID_AD = 0x00 # New constant for Device ID register
 TEMP02 = 0x06
 TEMP01 = 0x07
@@ -67,7 +68,19 @@ class ADXL355:
 
         # Device init
         self._set_measure_range(measure_range)
+        self._set_odr(0x00) # Set ODR to 4000 Hz
         self._enable_measure_mode()
+
+    def _set_odr(self, odr_value):
+        """Sets the Output Data Rate (ODR) on ADXL355 device.
+
+        Args:
+            odr_value (int): Value to write to the FILTER register.
+
+        Returns:
+            None
+        """
+        self.write_data(FILTER, odr_value)
 
     def write_data(self, address, value):
         """Writes data on ADXL355 device address.

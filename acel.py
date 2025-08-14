@@ -54,19 +54,43 @@ class AcelerometroApp:
         self.crear_widgets()
         self.cargar_configuracion()
 
-        self.after_job = self.root.after(50, self.actualizar_datos)
+        self.after_job = self.root.after(1, self.actualizar_datos)
 
     def inicializar_variables_estado(self):
         self.grabando = False
         self.was_grabbing_last_frame = False
         self.event_state = 'IDLE'
-        self.cooldown_start_time = 0
+        self.last_unstable_time = 0
         self.current_log_filename = None
         self.matriz_calibracion = np.eye(3)
         self.pre_event_buffer = deque(maxlen=40)
         self.var_promedio_habilitado = tk.BooleanVar(value=False)
         self.var_promedio_muestras = tk.StringVar(value='10')
         self.datos_promedio = deque(maxlen=10)
+
+        # Nuevas variables para umbrales
+        self.var_umbral_mode = tk.StringVar(value="Relativo")
+        self.var_auto_center = tk.BooleanVar(value=False)
+        # Relativo
+        self.var_center_x = tk.StringVar(value='0.0')
+        self.var_center_y = tk.StringVar(value='0.0')
+        self.var_center_z = tk.StringVar(value='1.0')
+        self.var_delta_x = tk.StringVar(value='0.5')
+        self.var_delta_y = tk.StringVar(value='0.5')
+        self.var_delta_z = tk.StringVar(value='0.5')
+        # Absoluto
+        self.var_min_x = tk.StringVar(value='-0.5')
+        self.var_max_x = tk.StringVar(value='0.5')
+        self.var_min_y = tk.StringVar(value='-0.5')
+        self.var_max_y = tk.StringVar(value='0.5')
+        self.var_min_z = tk.StringVar(value='0.5')
+        self.var_max_z = tk.StringVar(value='1.5')
+
+        # Historial para cálculo de centro automático
+        self.history_x = deque(maxlen=40)
+        self.history_y = deque(maxlen=40)
+        self.history_z = deque(maxlen=40)
+
         self.limpiar_datos_grafico()
 
     def crear_widgets(self):
@@ -75,13 +99,13 @@ class AcelerometroApp:
         self.config_tab = ttk.Frame(main_tab_control)
         self.analyzer_tab = ttk.Frame(main_tab_control)
         main_tab_control.add(self.monitor_tab, text='Monitor')
-        main_tab_control.add(self.config_tab, text='Configuración')
         main_tab_control.add(self.analyzer_tab, text='Analizador de Archivos')
+        main_tab_control.add(self.config_tab, text='Configuración')
         main_tab_control.pack(expand=1, fill="both", padx=5, pady=(5, 10))
 
         self.crear_pestana_monitor()
-        self.crear_pestana_configuracion()
         self.crear_pestana_analizador()
+        self.crear_pestana_configuracion()
 
         self.error_banner = tk.Label(self.root, text="SENSOR NO DETECTADO. Active el modo simulación o revise la conexión.", bg="red", fg="white")
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -112,7 +136,27 @@ class AcelerometroApp:
         self.linea_z, = self.ax_principal.plot([], [], label='Z', color='b')
         self.ax_principal.legend(); self.ax_principal.set_ylabel("Aceleración (g)")
         canvas_principal = FigureCanvasTkAgg(fig_principal, master=self.monitor_tab); canvas_principal.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=10)
-        self.ani = animation.FuncAnimation(fig_principal, self.animar_grafico_principal, interval=50, blit=False, save_count=100)
+        self.ani = animation.FuncAnimation(fig_principal, self.animar_grafico_principal, interval=1, blit=False, save_count=100)
+
+    def _actualizar_visibilidad_centro(self, *args):
+        if self.var_auto_center.get():
+            self.entry_center_x.config(state='disabled')
+            self.entry_center_y.config(state='disabled')
+            self.entry_center_z.config(state='disabled')
+        else:
+            self.entry_center_x.config(state='normal')
+            self.entry_center_y.config(state='normal')
+            self.entry_center_z.config(state='normal')
+
+    def _actualizar_visibilidad_umbrales(self, *args):
+        mode = self.var_umbral_mode.get()
+        if mode == 'Relativo':
+            self.relativo_frame.pack(fill=tk.X, pady=5)
+            self.absoluto_frame.pack_forget()
+            self._actualizar_visibilidad_centro()
+        else: # Absoluto
+            self.relativo_frame.pack_forget()
+            self.absoluto_frame.pack(fill=tk.X, pady=5)
 
     def crear_pestana_configuracion(self):
         config_notebook = ttk.Notebook(self.config_tab)
@@ -155,11 +199,63 @@ class AcelerometroApp:
 
         event_frame = ttk.LabelFrame(rec_tab, text="Detección Automática de Eventos", padding=10); event_frame.pack(fill=tk.X, pady=5, padx=5)
         self.var_auto_record_enabled = tk.BooleanVar(value=False); tk.Checkbutton(event_frame, text="Activar detección de eventos", variable=self.var_auto_record_enabled).pack(anchor='w')
+        
         params_frame = tk.Frame(event_frame); params_frame.pack(fill=tk.X, pady=5)
-        self.var_thresh_x = tk.StringVar(value='0.5'); self.var_thresh_y = tk.StringVar(value='0.5'); self.var_thresh_z = tk.StringVar(value='0.5'); self.var_cooldown = tk.StringVar(value='2.0'); self.var_pre_record_time = tk.StringVar(value='2.0')
-        event_vars = [("Umbral X (g):", self.var_thresh_x), ("Umbral Y (g):", self.var_thresh_y), ("Umbral Z (g, sobre 1g):", self.var_thresh_z), ("Estabilidad (s):", self.var_cooldown), ("Tiempo Pre-grabación (s):", self.var_pre_record_time)]
-        for i, (txt, var) in enumerate(event_vars):
-            tk.Label(params_frame, text=txt).grid(row=i, column=0, sticky='w'); tk.Entry(params_frame, textvariable=var, width=8).grid(row=i, column=1, padx=5)
+        self.var_cooldown = tk.StringVar(value='2.0'); self.var_pre_record_time = tk.StringVar(value='2.0')
+        tk.Label(params_frame, text="Estabilidad (s):").grid(row=0, column=0, sticky='w'); tk.Entry(params_frame, textvariable=self.var_cooldown, width=8).grid(row=0, column=1, padx=5)
+        tk.Label(params_frame, text="Tiempo Pre-grabación (s):").grid(row=1, column=0, sticky='w'); tk.Entry(params_frame, textvariable=self.var_pre_record_time, width=8).grid(row=1, column=1, padx=5)
+
+        umbral_mode_frame = ttk.LabelFrame(event_frame, text="Modo de Umbral de Estabilidad", padding=10); umbral_mode_frame.pack(fill=tk.X, pady=(10, 5), padx=5)
+        tk.Radiobutton(umbral_mode_frame, text="Relativo (Centro ± Delta)", variable=self.var_umbral_mode, value="Relativo", command=self._actualizar_visibilidad_umbrales).pack(anchor='w')
+        tk.Radiobutton(umbral_mode_frame, text="Absoluto (Mínimo y Máximo)", variable=self.var_umbral_mode, value="Absoluto", command=self._actualizar_visibilidad_umbrales).pack(anchor='w')
+
+        self.relativo_frame = tk.Frame(event_frame)
+        tk.Checkbutton(self.relativo_frame, text="Calcular centro automáticamente", variable=self.var_auto_center, command=self._actualizar_visibilidad_centro).grid(row=0, column=0, columnspan=4, sticky='w')
+        
+        tk.Label(self.relativo_frame, text="Centro X:").grid(row=1, column=0, sticky='w', pady=2)
+        self.entry_center_x = tk.Entry(self.relativo_frame, textvariable=self.var_center_x, width=8); 
+        self.entry_center_x.grid(row=1, column=1, padx=5, pady=2)
+        tk.Label(self.relativo_frame, text="Centro Y:").grid(row=2, column=0, sticky='w', pady=2)
+        self.entry_center_y = tk.Entry(self.relativo_frame, textvariable=self.var_center_y, width=8); 
+        self.entry_center_y.grid(row=2, column=1, padx=5, pady=2)
+        tk.Label(self.relativo_frame, text="Centro Z:").grid(row=3, column=0, sticky='w', pady=2)
+        self.entry_center_z = tk.Entry(self.relativo_frame, textvariable=self.var_center_z, width=8); 
+        self.entry_center_z.grid(row=3, column=1, padx=5, pady=2)
+
+        tk.Label(self.relativo_frame, text="Delta X:").grid(row=1, column=2, sticky='w', pady=2)
+        tk.Entry(self.relativo_frame, textvariable=self.var_delta_x, width=8).grid(row=1, column=3, padx=5, pady=2)
+        tk.Label(self.relativo_frame, text="Delta Y:").grid(row=2, column=2, sticky='w', pady=2)
+        tk.Entry(self.relativo_frame, textvariable=self.var_delta_y, width=8).grid(row=2, column=3, padx=5, pady=2)
+        tk.Label(self.relativo_frame, text="Delta Z:").grid(row=3, column=2, sticky='w', pady=2)
+        tk.Entry(self.relativo_frame, textvariable=self.var_delta_z, width=8).grid(row=3, column=3, padx=5, pady=2)
+
+        self.absoluto_frame = tk.Frame(event_frame)
+        # absoluto_vars = [
+        #     ("Mín X:", self.var_min_x), ("Máx X:", self.var_max_x),
+        #     ("Mín Y:", self.var_min_y), ("Máx Y:", self.var_max_y),
+        #     ("Mín Z:", self.var_min_z), ("Máx Z:", self.var_max_z),
+        # ]
+        # for i, (txt, var) in enumerate(absoluto_vars):
+        #     tk.Label(self.absoluto_frame, text=txt).grid(row=i % 3, column=(i // 3) * 2, sticky='w', pady=2)
+        #     tk.Entry(self.absoluto_frame, textvariable=var, width=8).grid(row=i % 3, column=(i // 3) * 2 + 1, padx=5, pady=2)
+        tk.Label(self.absoluto_frame, text="Mín X:").grid(row=1, column=0, sticky='w', pady=2)
+        self.entry_min_x = tk.Entry(self.absoluto_frame, textvariable=self.var_min_x, width=8); 
+        self.entry_min_x.grid(row=1, column=1, padx=5, pady=2)
+        tk.Label(self.absoluto_frame, text="Mín Y:").grid(row=2, column=0, sticky='w', pady=2)
+        self.entry_min_y = tk.Entry(self.absoluto_frame, textvariable=self.var_min_y, width=8); 
+        self.entry_min_y.grid(row=2, column=1, padx=5, pady=2)
+        tk.Label(self.absoluto_frame, text="Mín Z:").grid(row=3, column=0, sticky='w', pady=2)
+        self.entry_min_z = tk.Entry(self.absoluto_frame, textvariable=self.var_min_z, width=8); 
+        self.entry_min_z.grid(row=3, column=1, padx=5, pady=2)
+
+        tk.Label(self.absoluto_frame, text="Máx X:").grid(row=1, column=2, sticky='w', pady=2)
+        tk.Entry(self.absoluto_frame, textvariable=self.var_max_x, width=8).grid(row=1, column=3, padx=5, pady=2)
+        tk.Label(self.absoluto_frame, text="Máx Y:").grid(row=2, column=2, sticky='w', pady=2)
+        tk.Entry(self.absoluto_frame, textvariable=self.var_max_y, width=8).grid(row=2, column=3, padx=5, pady=2)
+        tk.Label(self.absoluto_frame, text="Máx Z:").grid(row=3, column=2, sticky='w', pady=2)
+        tk.Entry(self.absoluto_frame, textvariable=self.var_max_z, width=8).grid(row=3, column=3, padx=5, pady=2)
+
+        self._actualizar_visibilidad_umbrales()
 
         # --- Pestaña de Visualización y Modo ---
         graph_frame = ttk.LabelFrame(vis_tab, text="Configuración del Gráfico", padding=10); graph_frame.pack(fill=tk.X, pady=5, padx=5)
@@ -195,6 +291,7 @@ class AcelerometroApp:
 
     def cargar_y_mostrar_archivo(self):
         filepath = filedialog.askopenfilename(
+            initialdir="data",
             title="Seleccionar archivo de datos",
             filetypes=(("Text files", "*.txt"), ("All files", "*.*"))
         )
@@ -270,21 +367,22 @@ class AcelerometroApp:
         return np.eye(3) + vx + vx.dot(vx) * ((1 - c) / (s**2))
 
     def actualizar_datos(self):
-        try:
-            pre_record_time = float(self.var_pre_record_time.get())
-            max_len = int(pre_record_time / 0.05)
-        except ValueError:
-            max_len = 40
-        if self.pre_event_buffer.maxlen != max_len:
-            self.pre_event_buffer = deque(list(self.pre_event_buffer), maxlen=max_len)
+        # --- Actualizar tamaños de buffers y deques según configuración ---
+        try: pre_record_time = float(self.var_pre_record_time.get()); max_len_pre = int(pre_record_time / 0.05)
+        except ValueError: max_len_pre = 40
+        if self.pre_event_buffer.maxlen != max_len_pre: self.pre_event_buffer = deque(list(self.pre_event_buffer), maxlen=max_len_pre)
 
-        try:
-            num_muestras = int(self.var_promedio_muestras.get())
-        except ValueError:
-            num_muestras = 10
-        if self.datos_promedio.maxlen != num_muestras:
-            self.datos_promedio = deque(list(self.datos_promedio), maxlen=num_muestras)
+        try: num_muestras = int(self.var_promedio_muestras.get())
+        except ValueError: num_muestras = 10
+        if self.datos_promedio.maxlen != num_muestras: self.datos_promedio = deque(list(self.datos_promedio), maxlen=num_muestras)
 
+        try: cooldown_duration = float(self.var_cooldown.get()); max_len_hist = int(cooldown_duration / 0.05)
+        except ValueError: max_len_hist = 40
+        if self.history_x.maxlen != max_len_hist: self.history_x = deque(list(self.history_x), maxlen=max_len_hist)
+        if self.history_y.maxlen != max_len_hist: self.history_y = deque(list(self.history_y), maxlen=max_len_hist)
+        if self.history_z.maxlen != max_len_hist: self.history_z = deque(list(self.history_z), maxlen=max_len_hist)
+
+        # --- Lectura y promediado de datos del sensor ---
         if not self.sensor.sensor_detectado and not self.var_simulacion_activada.get(): self.error_banner.pack(side=tk.BOTTOM, fill=tk.X)
         else: self.error_banner.pack_forget()
 
@@ -299,39 +397,81 @@ class AcelerometroApp:
         log_line = f"{datetime.now().isoformat()},{x_raw:.4f},{y_raw:.4f},{z_raw:.4f},{temp:.2f}\n"
         self.pre_event_buffer.append(log_line)
 
+        # --- Calibración y actualización de historial ---
         g_calibrado = self.matriz_calibracion.dot(np.array([x_raw, y_raw, z_raw]))
         x, y, z = g_calibrado[0], g_calibrado[1], g_calibrado[2]
 
+        self.history_x.append(x)
+        self.history_y.append(y)
+        self.history_z.append(z)
+
+        # --- Gestión de lógica y actualización de GUI ---
         self.gestionar_grabacion_eventos(x, y, z, log_line)
         self.actualizar_gui_datos(x, y, z, temp, x_raw, y_raw, z_raw)
         self.actualizar_datos_grafico(x, y, z)
         self.actualizar_visualizacion_3d(x, y, z)
 
-        self.after_job = self.root.after(50, self.actualizar_datos)
+        self.after_job = self.root.after(1, self.actualizar_datos)
 
     def gestionar_grabacion_eventos(self, x, y, z, current_log_line):
-        was_auto_recording = self.event_state in ['RECORDING', 'COOLDOWN']
-        
+        was_auto_recording = self.event_state == 'RECORDING'
+
         if self.var_auto_record_enabled.get() and (self.sensor.sensor_detectado or self.var_simulacion_activada.get()):
             try:
-                thresh_x = float(self.var_thresh_x.get()); thresh_y = float(self.var_thresh_y.get()); thresh_z = float(self.var_thresh_z.get()); cooldown_duration = float(self.var_cooldown.get())
-            except ValueError: thresh_x, thresh_y, thresh_z, cooldown_duration = 0.5, 0.5, 0.5, 2.0
-            is_stable = (abs(x) < thresh_x and abs(y) < thresh_y and abs(z - 1.0) < thresh_z)
-            if self.event_state == 'IDLE' and not is_stable: self.event_state = 'RECORDING'
-            elif self.event_state == 'RECORDING' and is_stable: self.event_state = 'COOLDOWN'; self.cooldown_start_time = time.time()
-            elif self.event_state == 'COOLDOWN':
-                if not is_stable: self.event_state = 'RECORDING'
-                elif (time.time() - self.cooldown_start_time) > cooldown_duration: self.event_state = 'IDLE'
-        else: self.event_state = 'IDLE'
+                cooldown_duration = float(self.var_cooldown.get())
+                umbral_mode = self.var_umbral_mode.get()
 
-        is_now_auto_recording = self.event_state in ['RECORDING', 'COOLDOWN']
+                if umbral_mode == 'Relativo':
+                    delta_x = float(self.var_delta_x.get())
+                    delta_y = float(self.var_delta_y.get())
+                    delta_z = float(self.var_delta_z.get())
+
+                    if self.var_auto_center.get() and self.history_x:
+                        center_x = (min(self.history_x) + max(self.history_x)) / 2
+                        center_y = (min(self.history_y) + max(self.history_y)) / 2
+                        center_z = (min(self.history_z) + max(self.history_z)) / 2
+                    else:
+                        center_x = float(self.var_center_x.get())
+                        center_y = float(self.var_center_y.get())
+                        center_z = float(self.var_center_z.get())
+                    
+                    is_stable = (
+                        (center_x - delta_x) < x < (center_x + delta_x) and
+                        (center_y - delta_y) < y < (center_y + delta_y) and
+                        (center_z - delta_z) < z < (center_z + delta_z)
+                    )
+                else: # Absoluto
+                    min_x = float(self.var_min_x.get()); max_x = float(self.var_max_x.get())
+                    min_y = float(self.var_min_y.get()); max_y = float(self.var_max_y.get())
+                    min_z = float(self.var_min_z.get()); max_z = float(self.var_max_z.get())
+                    is_stable = (
+                        min_x < x < max_x and
+                        min_y < y < max_y and
+                        min_z < z < max_z
+                    )
+            except (ValueError, IndexError):
+                is_stable = True # Falla a un estado seguro (no grabar) si la config es inválida o los buffers están vacíos
+
+            if not is_stable:
+                self.last_unstable_time = time.time()
+
+            if self.event_state == 'IDLE':
+                if not is_stable:
+                    self.event_state = 'RECORDING'
+            elif self.event_state == 'RECORDING':
+                if (time.time() - self.last_unstable_time) > cooldown_duration:
+                    self.event_state = 'IDLE'
+        else:
+            self.event_state = 'IDLE'
+
+        is_now_auto_recording = self.event_state == 'RECORDING'
         just_started_manual = self.grabando and not self.was_grabbing_last_frame
         just_started_auto = is_now_auto_recording and not was_auto_recording
 
         if just_started_manual or just_started_auto:
             base_name = self.var_nombre_archivo.get() or "datos"
             timestamp_str = datetime.now().strftime("%y%m%d-%H%M%S")
-            self.current_log_filename = f"{base_name}_{timestamp_str}.txt"
+            self.current_log_filename = os.path.join("data", f"{base_name}_{timestamp_str}.txt")
             with open(self.current_log_filename, "w") as f:
                 f.writelines(list(self.pre_event_buffer))
         elif self.grabando or is_now_auto_recording:
@@ -383,16 +523,28 @@ class AcelerometroApp:
         config = {
             'nombre_archivo': self.var_nombre_archivo.get(),
             'auto_record': self.var_auto_record_enabled.get(),
-            'thresh_x': self.var_thresh_x.get(),
-            'thresh_y': self.var_thresh_y.get(),
-            'thresh_z': self.var_thresh_z.get(),
             'cooldown': self.var_cooldown.get(),
             'pre_record_time': self.var_pre_record_time.get(),
             'time_window': self.var_time_window.get(),
             'simulacion': self.var_simulacion_activada.get(),
             'matriz_calibracion': self.matriz_calibracion.tolist(),
             'promedio_habilitado': self.var_promedio_habilitado.get(),
-            'promedio_muestras': self.var_promedio_muestras.get()
+            'promedio_muestras': self.var_promedio_muestras.get(),
+            # Nuevas variables de umbral
+            'umbral_mode': self.var_umbral_mode.get(),
+            'auto_center': self.var_auto_center.get(),
+            'center_x': self.var_center_x.get(),
+            'center_y': self.var_center_y.get(),
+            'center_z': self.var_center_z.get(),
+            'delta_x': self.var_delta_x.get(),
+            'delta_y': self.var_delta_y.get(),
+            'delta_z': self.var_delta_z.get(),
+            'min_x': self.var_min_x.get(),
+            'max_x': self.var_max_x.get(),
+            'min_y': self.var_min_y.get(),
+            'max_y': self.var_max_y.get(),
+            'min_z': self.var_min_z.get(),
+            'max_z': self.var_max_z.get(),
         }
         with open(CONFIG_FILE, 'w') as f:
             json.dump(config, f, indent=4)
@@ -405,9 +557,6 @@ class AcelerometroApp:
             
             self.var_nombre_archivo.set(config.get('nombre_archivo', "datos"))
             self.var_auto_record_enabled.set(config.get('auto_record', False))
-            self.var_thresh_x.set(config.get('thresh_x', '0.5'))
-            self.var_thresh_y.set(config.get('thresh_y', '0.5'))
-            self.var_thresh_z.set(config.get('thresh_z', '0.5'))
             self.var_cooldown.set(config.get('cooldown', '2.0'))
             self.var_pre_record_time.set(config.get('pre_record_time', '2.0'))
             self.var_time_window.set(config.get('time_window', '10'))
@@ -415,10 +564,28 @@ class AcelerometroApp:
             self.var_promedio_habilitado.set(config.get('promedio_habilitado', False))
             self.var_promedio_muestras.set(config.get('promedio_muestras', '10'))
             
+            self.var_umbral_mode.set(config.get('umbral_mode', 'Relativo'))
+            self.var_auto_center.set(config.get('auto_center', False))
+            self.var_center_x.set(config.get('center_x', '0.0'))
+            self.var_center_y.set(config.get('center_y', '0.0'))
+            self.var_center_z.set(config.get('center_z', '1.0'))
+            self.var_delta_x.set(config.get('delta_x', '0.5'))
+            self.var_delta_y.set(config.get('delta_y', '0.5'))
+            self.var_delta_z.set(config.get('delta_z', '0.5'))
+            self.var_min_x.set(config.get('min_x', '-0.5'))
+            self.var_max_x.set(config.get('max_x', '0.5'))
+            self.var_min_y.set(config.get('min_y', '-0.5'))
+            self.var_max_y.set(config.get('max_y', '0.5'))
+            self.var_min_z.set(config.get('min_z', '0.5'))
+            self.var_max_z.set(config.get('max_z', '1.5'))
+
             matriz = config.get('matriz_calibracion')
             if matriz:
                 self.matriz_calibracion = np.array(matriz)
                 self.actualizar_matriz_calibracion_vars()
+
+            if hasattr(self, 'relativo_frame'):
+                self._actualizar_visibilidad_umbrales()
 
         except (json.JSONDecodeError, KeyError) as e:
             print(f"Error al cargar el archivo de configuración: {e}")

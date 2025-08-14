@@ -1,9 +1,6 @@
 {
     "nombre_archivo": "datos",
     "auto_record": true,
-    "thresh_x": "0.5",
-    "thresh_y": "0.5",
-    "thresh_z": "0.3",
     "cooldown": "2.0",
     "pre_record_time": "2.0",
     "time_window": "20",
@@ -26,5 +23,19 @@
         ]
     ],
     "promedio_habilitado": true,
-    "promedio_muestras": "10"
+    "promedio_muestras": "10",
+    "umbral_mode": "Relativo",
+    "auto_center": true,
+    "center_x": "0.0",
+    "center_y": "0.0",
+    "center_z": "1.0",
+    "delta_x": "0.1",
+    "delta_y": "0.1",
+    "delta_z": "0.1",
+    "min_x": "-0.5",
+    "max_x": "0.5",
+    "min_y": "-0.5",
+    "max_y": "0.5",
+    "min_z": "0.5",
+    "max_z": "1.5"
 }
