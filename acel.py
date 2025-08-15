@@ -20,6 +20,7 @@ CONFIG_FILE = "config.json"
 
 class Sensor:
     last_correct_axes = (0,0,0)
+    samples_fifo = 1
     """Gestiona la comunicación con el sensor ADXL355 o la simulación de datos."""
     def __init__(self):
         self.sensor_detectado = False
@@ -33,7 +34,7 @@ class Sensor:
     def leer_datos_reales(self):
         if not self.sensor_detectado: return 0.0, 0.0, 0.0, 0.0
         # axes = self.adxl355.get_axes_norm()
-        axes = self.adxl355.read_fifo(32)
+        axes = self.adxl355.read_fifo(self.samples_fifo)
         if axes is None:
             axes = self.last_correct_axes
         else:
@@ -69,7 +70,7 @@ class AcelerometroApp:
         self.event_state = 'IDLE'
         self.last_unstable_time = 0
         self.current_log_filename = None
-        self.matriz_calibracion = np.eye(3)
+        self.matriz_calibracionls = np.eye(3)
         self.pre_event_buffer = deque(maxlen=40)
         self.var_promedio_habilitado = tk.BooleanVar(value=False)
         self.var_promedio_muestras = tk.StringVar(value='10')
@@ -504,15 +505,25 @@ class AcelerometroApp:
         self.was_grabbing_last_frame = self.grabando
 
     def actualizar_gui_datos(self, x, y, z, temp, x_raw, y_raw, z_raw):
-        self.var_x.set(f"{x:+.2f} g"); self.var_y.set(f"{y:+.2f} g"); self.var_z.set(f"{z:+.2f} g"); self.var_temp.set(f"{temp:.1f} °C")
-        self.var_raw_x.set(f"{x_raw:+.4f}"); self.var_raw_y.set(f"{y_raw:+.4f}"); self.var_raw_z.set(f"{z_raw:+.4f}")
-        self.var_cal_x.set(f"{x:+.4f}"); self.var_cal_y.set(f"{y:+.4f}"); self.var_cal_z.set(f"{z:+.4f}")
+        self.var_x.set(f"{x:+.4f} g"); 
+        self.var_y.set(f"{y:+.4f} g"); 
+        self.var_z.set(f"{z:+.4f} g"); 
+        self.var_temp.set(f"{temp:.1f} °C")
+        self.var_raw_x.set(f"{x_raw:+.4f}"); 
+        self.var_raw_y.set(f"{y_raw:+.4f}"); 
+        self.var_raw_z.set(f"{z_raw:+.4f}")
+        self.var_cal_x.set(f"{x:+.4f}"); 
+        self.var_cal_y.set(f"{y:+.4f}"); 
+        self.var_cal_z.set(f"{z:+.4f}")
 
     def actualizar_datos_grafico(self, x, y, z):
         try: time_window = float(self.var_time_window.get())
         except ValueError: time_window = 10.0
         current_time = time.time() - self.start_time
-        self.datos_grafico['tiempos'].append(current_time); self.datos_grafico['x'].append(x); self.datos_grafico['y'].append(y); self.datos_grafico['z'].append(z)
+        self.datos_grafico['tiempos'].append(current_time); 
+        self.datos_grafico['x'].append(x); 
+        self.datos_grafico['y'].append(y); 
+        self.datos_grafico['z'].append(z)
         while self.datos_grafico['tiempos'] and self.datos_grafico['tiempos'][0] < current_time - time_window:
             [self.datos_grafico[k].pop(0) for k in self.datos_grafico]
 
