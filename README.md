@@ -13,8 +13,8 @@
 
 
 <p align="center">
-  <img width="400" height="400" alt="image" src="https://github.com/user-attachments/assets/ad8cc7d5-1037-4552-b3ed-95a519c955e4" />
-  <img width="400" height="400" alt="image" src="https://github.com/user-attachments/assets/30948772-9725-485a-a07c-f26d5f5b5180" />
+  <img width="200" height="200" alt="image" src="https://github.com/user-attachments/assets/ad8cc7d5-1037-4552-b3ed-95a519c955e4" />
+  <img width="600" height="600" alt="image" src="https://github.com/user-attachments/assets/30948772-9725-485a-a07c-f26d5f5b5180" />
 </p>
 
 **Raspberry 5 pinout**:
