@@ -1,3 +1,5 @@
+import RPi.GPIO as GPIO
+import bisect
 import queue
 import tkinter as tk
 from tkinter import ttk, filedialog
@@ -18,6 +20,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '.', 
 from adxl355 import ADXL355
 
 CONFIG_FILE = "config.json"
+
+# ==== Configuración GPIO ====
+PIN_INT = 22  # Pin físico
+GPIO.setmode(GPIO.BOARD)
+GPIO.setup(PIN_INT, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pull-up para active-low
 
 class Sensor:
     last_correct_axes = (0,0,0)
@@ -53,6 +60,13 @@ class Sensor:
         temp = self.adxl355.get_temperature()
         return axes['x'], axes['y'], axes['z'], temp
 
+    def leer_fifo(self):
+        data = self.adxl355.read_fifo(32)
+        if data is not None:
+            data["temp"] = self.adxl355.get_temperature()
+            data["timestamp"] = time.time()
+            self.data_deque.append(data)  # Guardar en histórico
+
     def leer_datos_simulados(self, event_state):
         if event_state == 'RECORDING' or (random.random() < 0.01 and event_state == 'IDLE'):
             accel_x, accel_y, accel_z = random.uniform(-2, 2), random.uniform(-2, 2), random.uniform(-2, 2)
@@ -80,8 +94,6 @@ class Sensor:
         return data_list[idx_inicio:idx_fin]
 
 class AcelerometroApp:
-    # Cola para compartir datos entre hilos
-    data_queue = queue.Queue()
     
     def __init__(self, root):
         self.root = root
@@ -92,6 +104,7 @@ class AcelerometroApp:
         self.inicializar_variables_estado()
         self.crear_widgets()
         self.cargar_configuracion()
+        GPIO.add_event_detect(PIN_INT, GPIO.FALLING, callback=self.sensor.leer_fifo())
 
         self.after_job = self.root.after(1, self.actualizar_datos)
 
@@ -655,12 +668,18 @@ class AcelerometroApp:
 
     def on_closing(self):
         self.guardar_configuracion()
-        if self.after_job: self.root.after_cancel(self.after_job)
-        try: self.ani.event_source.stop() 
-        except: pass
-        plt.close('all'); self.root.quit(); self.root.destroy()
+        if self.after_job: 
+            self.root.after_cancel(self.after_job)
+        try: 
+            self.ani.event_source.stop() 
+        except: 
+            pass
+        plt.close('all'); 
+        self.root.quit(); 
+        self.root.destroy()
 
 if __name__ == "__main__":
     root = tk.Tk()
     app = AcelerometroApp(root)
+    
     root.mainloop()
