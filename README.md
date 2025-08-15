@@ -3,7 +3,7 @@
 | Digital Power - VDD        | 01               | Blanco   | P1-1 | 
 | Digital Power - VDDIO      | 17               | Gris     | P1-3 |
 | Digital Ground             | 09               | Violeta  | P1-5 |
-| Interrupt 1                | Not Connected    |          | P1-2 |
+| Interrupt 1                | 22               | Azul     | P1-2 |
 | Interrupt 2	               | Not Connected    |          | P1-4 |
 | Data Ready                 | Not Connected    |          | P1-6 |
 | Chip Select                | 24               | Verde    | P2-2 |
