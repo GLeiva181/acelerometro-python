@@ -35,8 +35,9 @@ DEVID_AD = 0x00 # New constant for Device ID register
 TEMP02 = 0x06
 TEMP01 = 0x07
 FIFO_DATA = 0x11
+FIFO_SAMPLES = 0x29
 FIFA_ENTRY = 0x05
-
+INTERRUPT_MAP = 0x2A
 
 # Data Range
 RANGE_2G = 0x01
@@ -48,6 +49,8 @@ READ_BIT = 0x01
 WRITE_BIT = 0x00
 DUMMY_BYTE = 0xAA
 MEASURE_MODE = 0x04 # Enable accelerometer and temperature
+#CONFIG INTERRUPTIONS
+INT_MODE = 0x02 # FIFO_FULL enable INT1
 
 class ADXL355:
     """
@@ -72,6 +75,7 @@ class ADXL355:
         # Device init
         self._set_measure_range(measure_range)
         self._set_odr(0x00) # Set ODR to 4000 Hz
+        self._set_interrupt()
         self._enable_measure_mode()
         self.get_measure_range()
 
@@ -142,6 +146,11 @@ class ADXL355:
             None
         """
         self.write_data(RANGE, measure_range)
+    
+    def _set_interrupt(self):
+        """Sets interrupt on ADXL355 device.
+        """
+        self.write_data(INTERRUPT_MAP, INT_MODE)
     
     def get_measure_range(self):
         range_value = self.read_data(RANGE) & 0x03
