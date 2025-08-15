@@ -37,6 +37,7 @@ class Sensor:
 
     # Deque para histórico
     data_deque = deque(maxlen=MAX_MUESTRAS)
+    data_deque.append({'x':0,'y':0,'z':0,'temp':0,'timestamp':0})
 
     """Gestiona la comunicación con el sensor ADXL355 o la simulación de datos."""
     def __init__(self):
@@ -49,23 +50,26 @@ class Sensor:
             print(f"Sensor ADXL355 no detectado: {e}")
 
     def leer_datos_reales(self):
-        if not self.sensor_detectado: return 0.0, 0.0, 0.0, 0.0
+        if not self.sensor_detectado: 
+            return 9.9, 9.9, 9.9, 9.9
         # axes = self.adxl355.get_axes_norm()
-        axes = self.adxl355.read_fifo(self.samples_fifo)
-        if axes is None:
-            axes = self.last_correct_axes
-        else:
-            self.last_correct_axes = axes
+        # axes = self.adxl355.read_fifo(self.samples_fifo)
+        axes = self.data_deque[-1]
+        # if axes is None:
+        #     axes = self.last_correct_axes
+        # else:
+        #     self.last_correct_axes = axes
 
         temp = self.adxl355.get_temperature()
-        return axes['x'], axes['y'], axes['z'], temp
+        return axes['x'], axes['y'], axes['z'], axes['temp']
 
-    def leer_fifo(self):
+    def leer_fifo(self, channel=None):
         data = self.adxl355.read_fifo(32)
         if data is not None:
             data["temp"] = self.adxl355.get_temperature()
             data["timestamp"] = time.time()
             self.data_deque.append(data)  # Guardar en histórico
+            # print(data)
 
     def leer_datos_simulados(self, event_state):
         if event_state == 'RECORDING' or (random.random() < 0.01 and event_state == 'IDLE'):
@@ -104,8 +108,11 @@ class AcelerometroApp:
         self.inicializar_variables_estado()
         self.crear_widgets()
         self.cargar_configuracion()
-        GPIO.add_event_detect(PIN_INT, GPIO.FALLING, callback=self.sensor.leer_fifo())
-
+        # GPIO.add_event_detect(PIN_INT, GPIO.FALLING, callback=self.sensor.leer_fifo())
+        # if GPIO.input(PIN_INT) == 0 :
+        #     # and first==0
+        #     first=1
+        #     self.sensor.leer_fifo()
         self.after_job = self.root.after(1, self.actualizar_datos)
 
     def inicializar_variables_estado(self):
@@ -376,10 +383,13 @@ class AcelerometroApp:
         if self.var_simulacion_activada.get():
             return self.sensor.leer_datos_simulados(self.event_state)
         else:
-            return self.sensor.leer_datos_reales()
+            return self.sensor.data_deque[-1]
 
     def calibrar_ejes(self):
-        x, y, z, _ = self.leer_datos_sensor()
+        data = self.leer_datos_sensor()
+        x = data["x"]
+        y = data["y"]
+        z = data["z"]
         g_ref = np.array([x, y, z])
         self.matriz_calibracion = self.get_rotation_matrix_to_align(g_ref, np.array([0, 0, 1]))
         self.actualizar_matriz_calibracion_vars()
@@ -450,7 +460,8 @@ class AcelerometroApp:
         else: 
             self.error_banner.pack_forget()
 
-        x_raw, y_raw, z_raw, temp = self.leer_datos_sensor()
+        data = self.leer_datos_sensor()
+        x_raw, y_raw, z_raw, temp = data["x"], data["y"], data["z"], data["temp"]
 
         if self.var_promedio_habilitado.get():
             self.datos_promedio.append((x_raw, y_raw, z_raw, temp))
@@ -681,5 +692,10 @@ class AcelerometroApp:
 if __name__ == "__main__":
     root = tk.Tk()
     app = AcelerometroApp(root)
-    
+    GPIO.add_event_detect(PIN_INT, GPIO.FALLING, callback=app.sensor.leer_fifo)
+    first=0
+    if GPIO.input(PIN_INT) == 0 and first==0:
+        first=1
+        app.sensor.leer_fifo()
+
     root.mainloop()
