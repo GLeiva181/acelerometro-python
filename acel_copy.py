@@ -1,4 +1,5 @@
 import RPi.GPIO as GPIO
+from statistics import mean
 import bisect
 import queue
 import tkinter as tk
@@ -79,13 +80,13 @@ class Sensor:
         temp = random.uniform(20, 30)
         return accel_x, accel_y, accel_z, temp
     
-    def datos_entre_tiempos(data_deque, t_inicio, t_fin):
+    def datos_entre_tiempos(self, t_inicio, t_fin):
         """
         Devuelve una lista con los datos del deque entre dos timestamps usando búsqueda binaria.
         Se asume que los datos están ordenados por 'timestamp'.
         """
         # Convertir deque a lista para usar bisect
-        data_list = list(data_deque)
+        data_list = list(self.data_deque)
 
         # Extraer lista de timestamps
         timestamps = [item["timestamp"] for item in data_list]
@@ -460,8 +461,11 @@ class AcelerometroApp:
         else: 
             self.error_banner.pack_forget()
 
-        data = self.leer_datos_sensor()
-        x_raw, y_raw, z_raw, temp = data["x"], data["y"], data["z"], data["temp"]
+        x_raw, y_raw, z_raw, temp = self.leer_datos_sensor()
+        # x_raw = data["x"]
+        # y_raw = data["y"]
+        # z_raw = data["z"]
+        # temp = data["temp"]
 
         if self.var_promedio_habilitado.get():
             self.datos_promedio.append((x_raw, y_raw, z_raw, temp))
@@ -533,9 +537,11 @@ class AcelerometroApp:
             if self.event_state == 'IDLE':
                 if not is_stable:
                     self.event_state = 'RECORDING'
+                    self.recording_t_initial = time.time()
             elif self.event_state == 'RECORDING':
                 if (time.time() - self.last_unstable_time) > cooldown_duration:
                     self.event_state = 'IDLE'
+                    self.grabar_archivo(self.recording_t_initial, time.time())
         else:
             self.event_state = 'IDLE'
 
@@ -543,21 +549,60 @@ class AcelerometroApp:
         just_started_manual = self.grabando and not self.was_grabbing_last_frame
         just_started_auto = is_now_auto_recording and not was_auto_recording
 
-        if just_started_manual or just_started_auto:
-            base_name = self.var_nombre_archivo.get() or "datos"
-            timestamp_str = datetime.now().strftime("%y%m%d-%H%M%S")
-            self.current_log_filename = os.path.join("data", f"{base_name}_{timestamp_str}.txt")
-            with open(self.current_log_filename, "w") as f:
-                f.writelines(list(self.pre_event_buffer))
-        elif self.grabando or is_now_auto_recording:
-            if self.current_log_filename:
-                with open(self.current_log_filename, "a") as f:
-                    f.write(current_log_line)
+        # if just_started_manual or just_started_auto:
+        #     base_name = self.var_nombre_archivo.get() or "datos"
+        #     timestamp_str = datetime.now().strftime("%y%m%d-%H%M%S")
+        #     self.current_log_filename = os.path.join("data", f"{base_name}_{timestamp_str}.txt")
+        #     with open(self.current_log_filename, "w") as f:
+        #         f.writelines(list(self.pre_event_buffer))
+        # elif self.grabando or is_now_auto_recording:
+        #     if self.current_log_filename:
+        #         with open(self.current_log_filename, "a") as f:
+        #             f.write(current_log_line)
 
-        if self.grabando: self.boton_grabar.config(text="⏹ Detener Grabación", bg="red", state='normal')
-        elif is_now_auto_recording: self.boton_grabar.config(text="Grabando Evento...", bg="orange", state='disabled')
-        else: self.boton_grabar.config(text="▶ Iniciar Grabación", bg="green", state='normal')
+        if self.grabando: 
+            self.boton_grabar.config(text="⏹ Detener Grabación", bg="red", state='normal')
+        elif is_now_auto_recording: 
+            self.boton_grabar.config(text="Grabando Evento...", bg="orange", state='disabled')
+        else: 
+            self.boton_grabar.config(text="▶ Iniciar Grabación", bg="green", state='normal')
         self.was_grabbing_last_frame = self.grabando
+
+    def grabar_archivo(self, t_inicio, t_fin):
+        base_name = self.var_nombre_archivo.get() or "datos"
+        timestamp_str = datetime.now().strftime("%y%m%d-%H%M%S")
+        datos = self.sensor.datos_entre_tiempos(t_inicio, t_fin)
+        n_muestras = int(self.var_promedio_muestras.get())
+        promediados = []
+
+        if self.var_promedio_habilitado:
+            for i in range(0, len(datos), n_muestras):
+                bloque = datos[i:i+n_muestras]
+                if not bloque:
+                    continue
+
+                avg_x = mean(d["x"] for d in bloque)
+                avg_y = mean(d["y"] for d in bloque)
+                avg_z = mean(d["z"] for d in bloque)
+                avg_temp = mean(d["temp"] for d in bloque)
+                avg_ts = mean(d["timestamp"] for d in bloque)
+
+                promediados.append({
+                    "timestamp": avg_ts,
+                    "x": avg_x,
+                    "y": avg_y,
+                    "z": avg_z,
+                    "temp": avg_temp
+                })
+
+            datos = promediados
+
+        current_log_filename = os.path.join("data", f"{base_name}_{timestamp_str}.txt")
+        with open(current_log_filename, "w") as f:
+            for d in datos:
+                ts_str = datetime.fromtimestamp(d["timestamp"]).isoformat()
+                f.write(f"{ts_str},{d['x']:.4f},{d['y']:.4f},{d['z']:.4f},{d['temp']:.2f}\n")
+        
 
     def actualizar_gui_datos(self, x, y, z, temp, x_raw, y_raw, z_raw):
         self.var_x.set(f"{x:+.4f} g"); 
