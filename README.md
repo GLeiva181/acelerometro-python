@@ -30,4 +30,4 @@ https://www.analog.com/media/en/technical-documentation/user-guides/EVAL-ADXL354
 - Calibrar datos a grabar en archivo
 - Configuración de ODR
 - Configuración de numero de samples FIFO
-- Arreglar grabacion manual
+OK - Arreglar grabacion manual

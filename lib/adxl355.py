@@ -51,6 +51,7 @@ DUMMY_BYTE = 0xAA
 MEASURE_MODE = 0x04 # Enable accelerometer and temperature
 #CONFIG INTERRUPTIONS
 INT_MODE = 0x02 # FIFO_FULL enable INT1
+FIFO_SAMPLES_VALUE = 32
 
 class ADXL355:
     """
@@ -243,7 +244,6 @@ class ADXL355:
     def read_fifo(self, samples):
         fifo_entry=self.fifo_entries()
         num_samples = fifo_entry // 9
-        # fifo_entry=32
         if fifo_entry >= samples:
             fifo_data = self.spi_read(FIFO_DATA, samples * 9)
 
@@ -270,3 +270,30 @@ class ADXL355:
             return self.get_axes_norm({'x': avg_x, 'y': avg_y, 'z': avg_z})
         else:
             return None
+    
+    def read_fifo_full(self):
+        
+        fifo_data = self.spi_read(FIFO_DATA, FIFO_SAMPLES_VALUE * 9)
+
+        sum_x, sum_y, sum_z = 0, 0, 0
+        for i in range(FIFO_SAMPLES_VALUE):
+            start = i * 9
+            x_bytes = fifo_data[start : start + 3]      # bytes 0,1,2 → X
+            y_bytes = fifo_data[start + 3 : start + 6]  # bytes 3,4,5 → Y
+            z_bytes = fifo_data[start + 6 : start + 9]  # bytes 6,7,8 → Z
+
+            # convertir de 3 bytes a int20
+            x = self.bytes_to_int20(x_bytes)
+            y = self.bytes_to_int20(y_bytes)
+            z = self.bytes_to_int20(z_bytes)
+
+            sum_x += x
+            sum_y += y
+            sum_z += z
+
+            # Promedio de cada eje
+            avg_x = sum_x / FIFO_SAMPLES_VALUE
+            avg_y = sum_y / FIFO_SAMPLES_VALUE
+            avg_z = sum_z / FIFO_SAMPLES_VALUE
+
+        return self.get_axes_norm({'x': avg_x, 'y': avg_y, 'z': avg_z})

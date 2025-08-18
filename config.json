@@ -1,8 +1,8 @@
 {
     "nombre_archivo": "datos",
     "auto_record": true,
-    "cooldown": "2.0",
-    "pre_record_time": "2.0",
+    "cooldown": "1",
+    "pre_record_time": "2",
     "time_window": "20",
     "simulacion": false,
     "matriz_calibracion": [
@@ -22,9 +22,9 @@
             -0.9990539201019866
         ]
     ],
-    "promedio_habilitado": false,
-    "promedio_muestras": "1",
-    "samples_fifo": "30",
+    "promedio_habilitado": true,
+    "promedio_muestras": "2",
+    "samples_fifo": "32",
     "umbral_mode": "Relativo",
     "auto_center": true,
     "center_x": "0.0",

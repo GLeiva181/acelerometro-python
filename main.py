@@ -52,6 +52,8 @@ class Sensor:
 
     def leer_fifo(self, channel=None):
         data = self.adxl355.read_fifo(32)
+        #data = self.adxl355.get_axes_norm(self.adxl355.get_axes())
+        # data = self.adxl355.read_fifo_full()
         if data is not None:
             data["temp"] = self.adxl355.get_temperature()
             data["timestamp"] = time.time()
@@ -98,9 +100,11 @@ class AcelerometroApp:
 
     def inicializar_variables_estado(self):
         self.grabando = False
+        self.flanco_auto_recording = False
         self.was_grabbing_last_frame = False
         self.event_state = 'IDLE'
         self.last_unstable_time = 0
+        self.recording_t_initial = 0
         self.current_log_filename = None
         self.matriz_calibracion = np.eye(3)
         self.pre_event_buffer = deque(maxlen=40)
@@ -572,6 +576,9 @@ class AcelerometroApp:
             self.event_state = 'IDLE'
 
         is_now_auto_recording = self.event_state == 'RECORDING'
+        if is_now_auto_recording and self.flanco_auto_recording != is_now_auto_recording:
+            self.recording_t_initial = time.time()-float(self.var_pre_record_time.get())
+        self.flanco_auto_recording = is_now_auto_recording
         # just_started_manual = self.grabando and not self.was_grabbing_last_frame
         # just_started_auto = is_now_auto_recording and not was_auto_recording
 
@@ -589,12 +596,14 @@ class AcelerometroApp:
         self.was_grabbing_last_frame = self.grabando
 
     def grabar_archivo(self, t_inicio, t_fin):
+        print(
+            "Inicio: ", time.strftime("%y%m%d-%H%M%S", time.localtime(t_inicio)),
+            "Fin: ", time.strftime("%y%m%d-%H%M%S", time.localtime(t_fin))
+        )   
         base_name = self.var_nombre_archivo.get() or "datos"
         timestamp_str = datetime.now().strftime("%y%m%d-%H%M%S")
         datos = self.sensor.datos_entre_tiempos(t_inicio, t_fin)
-        # datos = self.sensor.data_deque
-        for d in datos:
-            d = self.calibrar_valores(d)
+        datos = [self.calibrar_valores(d) for d in datos]
         n_muestras = int(self.var_promedio_muestras.get())
         data_list = list(datos)
         promediados = []
@@ -616,7 +625,7 @@ class AcelerometroApp:
                     "z": avg_z,
                     "temp": avg_temp
                 })
-            data_list = promediados
+            datos = promediados
 
         current_log_filename = os.path.join("data", f"{base_name}_{timestamp_str}.txt")
         with open(current_log_filename, "w") as f:
