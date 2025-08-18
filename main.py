@@ -102,7 +102,7 @@ class AcelerometroApp:
         self.event_state = 'IDLE'
         self.last_unstable_time = 0
         self.current_log_filename = None
-        self.matriz_calibracionls = np.eye(3)
+        self.matriz_calibracion = np.eye(3)
         self.pre_event_buffer = deque(maxlen=40)
         self.var_promedio_habilitado = tk.BooleanVar(value=False)
         self.var_promedio_muestras = tk.StringVar(value='10')
@@ -374,20 +374,20 @@ class AcelerometroApp:
         if self.var_simulacion_activada.get():
             return self.sensor.leer_datos_simulados(self.event_state)
         else:
-            # print(self.sensor.data_deque[-1])
-            return self.sensor.data_deque[-1]
+            return dict(self.sensor.data_deque[-1])
     
     def leer_datos_calibrados(self):
         return self.calibrar_valores(self.leer_datos_sensor())
 
     def calibrar_valores(self, datos):
-        datos_calibrados = list(datos)
-        g_calibrado = self.matriz_calibracion.dot(np.array([datos_calibrados["x"], datos_calibrados["y"], datos_calibrados["z"]]))
-        datos_calibrados["x"], datos_calibrados["y"], datos_calibrados["z"] = g_calibrado[0], g_calibrado[1], g_calibrado[2]
-        return datos_calibrados
-    
+        datos_calibrado=dict(datos)
+        g_calibrado = self.matriz_calibracion.dot(np.array([datos["x"], datos["y"], datos["z"]]))
+        datos_calibrado["x"] = g_calibrado[0]
+        datos_calibrado["y"] = g_calibrado[1]
+        datos_calibrado["z"] = g_calibrado[2]
+        return datos_calibrado
+
     def calibrar_ejes(self):
-        # datos = self.leer_datos_sensor()
         datos = self.sensor.data_deque[-1]
         x = datos["x"]
         y = datos["y"]
@@ -599,8 +599,8 @@ class AcelerometroApp:
     def grabar_archivo(self, t_inicio, t_fin):
         base_name = self.var_nombre_archivo.get() or "datos"
         timestamp_str = datetime.now().strftime("%y%m%d-%H%M%S")
-        # datos = self.sensor.datos_entre_tiempos(t_inicio, t_fin)
-        datos = self.sensor.data_deque
+        datos = self.sensor.datos_entre_tiempos(t_inicio, t_fin)
+        # datos = self.sensor.data_deque
         for d in datos:
             d = self.calibrar_valores(d)
         n_muestras = int(self.var_promedio_muestras.get())
@@ -646,7 +646,8 @@ class AcelerometroApp:
         self.var_cal_z.set(f"{z:+.4f}")
 
     def actualizar_datos_grafico(self, x, y, z):
-        try: time_window = float(self.var_time_window.get())
+        try: 
+            time_window = float(self.var_time_window.get())
         except ValueError: time_window = 10.0
         current_time = time.time() - self.start_time
         self.datos_grafico['tiempos'].append(current_time); 
@@ -773,6 +774,4 @@ if __name__ == "__main__":
     if GPIO.input(PIN_INT) == 0 and first==0:
         first=1
         app.sensor.leer_fifo()
-
-
     root.mainloop()
