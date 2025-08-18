@@ -50,12 +50,15 @@ class Sensor:
             print(f"Sensor ADXL355 no detectado: {e}")
 
     def leer_fifo(self, channel=None):
-        data = self.adxl355.read_fifo(30)
+        data = self.adxl355.read_fifo(32)
+        # data = self.adxl355.get_axes_norm(self.adxl355.get_axes())
+        # print(data)
         if data is not None:
             data["temp"] = self.adxl355.get_temperature()
             data["timestamp"] = time.time()
             self.data_deque.append(data)  # Guardar en histórico
-            print(data)
+            if data["z"] > -1:
+                print(data)
 
 
     def leer_datos_simulados(self, event_state):
@@ -140,7 +143,7 @@ class AcelerometroApp:
         self.ani = animation.FuncAnimation(fig_principal, self.animar_grafico_principal, interval=1, blit=False, save_count=100)
 
     def leer_datos_sensor(self):
-        return dict(self.sensor.data_deque[-1])
+        return self.sensor.data_deque[-1]
 
     def actualizar_datos(self):
 
