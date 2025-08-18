@@ -169,7 +169,8 @@ class AcelerometroApp:
         self.ax_vector.axis('off')
         self.canvas_vector = FigureCanvasTkAgg(fig_vector, master=top_frame); self.canvas_vector.get_tk_widget().pack(side=tk.RIGHT)
 
-        self.boton_grabar = tk.Button(self.monitor_tab, text="▶ Iniciar Grabación", command=self.toggle_grabacion, bg="green", fg="white"); self.boton_grabar.pack(pady=5)
+        self.boton_grabar = tk.Button(self.monitor_tab, text="▶ Iniciar Grabación", command=self.toggle_grabacion, bg="green", fg="white"); 
+        self.boton_grabar.pack(pady=5)
 
         fig_principal, self.ax_principal = plt.subplots(figsize=(6, 3), dpi=100)
         self.linea_x, = self.ax_principal.plot([], [], label='X', color='r')
@@ -417,17 +418,15 @@ class AcelerometroApp:
                 self.cal_vars[i*3 + j].set(f"{self.matriz_calibracion[i, j]:.6f}")
 
     def toggle_grabacion(self):
-        self.grabando = not self.grabando
+        if self.grabando:
+            self.event_state = 'IDLE'
+            self.grabar_archivo(self.recording_t_initial, time.time())
+            self.grabando = False
+        else:
+            self.recording_t_initial = time.time()-float(self.var_pre_record_time.get())
+            self.event_state = 'RECORDING'
+            self.grabando = True
 
-    # def get_rotation_matrix_to_align(self, vec_a, vec_b):
-    #     vec_a_norm = np.linalg.norm(vec_a)
-    #     if vec_a_norm == 0: return np.eye(3)
-    #     vec_a = vec_a / vec_a_norm
-    #     vec_b = vec_b / np.linalg.norm(vec_b)
-    #     v = np.cross(vec_a, vec_b); s = np.linalg.norm(v); c = np.dot(vec_a, vec_b)
-    #     vx = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
-    #     if s == 0: return np.eye(3)
-    #     return np.eye(3) + vx + vx.dot(vx) * ((1 - c) / (s**2))
     def get_rotation_matrix_to_align(self, vec_a, vec_b):
         vec_a = vec_a / np.linalg.norm(vec_a)
         vec_b = vec_b / np.linalg.norm(vec_b)
@@ -523,7 +522,7 @@ class AcelerometroApp:
     def gestionar_grabacion_eventos(self, x, y, z, current_log_line):
         was_auto_recording = self.event_state == 'RECORDING'
 
-        if self.var_auto_record_enabled.get() and (self.sensor.sensor_detectado or self.var_simulacion_activada.get()):
+        if self.var_auto_record_enabled.get() and not self.grabando and (self.sensor.sensor_detectado or self.var_simulacion_activada.get()):
             try:
                 cooldown_duration = float(self.var_cooldown.get())
                 umbral_mode = self.var_umbral_mode.get()
@@ -565,7 +564,6 @@ class AcelerometroApp:
             if self.event_state == 'IDLE':
                 if not is_stable:
                     self.event_state = 'RECORDING'
-                    self.recording_t_initial = time.time()-float(self.var_pre_record_time.get())
             elif self.event_state == 'RECORDING':
                 if (time.time() - self.last_unstable_time) > cooldown_duration:
                     self.event_state = 'IDLE'
@@ -574,19 +572,13 @@ class AcelerometroApp:
             self.event_state = 'IDLE'
 
         is_now_auto_recording = self.event_state == 'RECORDING'
-        just_started_manual = self.grabando and not self.was_grabbing_last_frame
-        just_started_auto = is_now_auto_recording and not was_auto_recording
+        # just_started_manual = self.grabando and not self.was_grabbing_last_frame
+        # just_started_auto = is_now_auto_recording and not was_auto_recording
 
         # if just_started_manual or just_started_auto:
-        #     base_name = self.var_nombre_archivo.get() or "datos"
-        #     timestamp_str = datetime.now().strftime("%y%m%d-%H%M%S")
-        #     self.current_log_filename = os.path.join("data", f"{base_name}_{timestamp_str}.txt")
-        #     with open(self.current_log_filename, "w") as f:
-        #         f.writelines(list(self.pre_event_buffer))
+        #     self.recording_t_initial = time.time()-float(self.var_pre_record_time.get())
         # elif self.grabando or is_now_auto_recording:
-        #     if self.current_log_filename:
-        #         with open(self.current_log_filename, "a") as f:
-        #             f.write(current_log_line)
+        #     self.recording_t_initial = time.time()-float(self.var_pre_record_time.get())
 
         if self.grabando: 
             self.boton_grabar.config(text="⏹ Detener Grabación", bg="red", state='normal')
