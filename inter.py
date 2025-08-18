@@ -28,6 +28,10 @@ def leer_fifo(channel=None):
     fifo_data = adxl.read_fifo(32)
     if fifo_data:
         print(f"FIFO leída ({counter}):", fifo_data, time.time())
+        if fifo_data["z"] > -1:
+            print(f"Finalizando ejecución porque Z={fifo_data['z']} > -1")
+            GPIO.cleanup()
+            sys.exit(0)
 
 # 1️⃣ Lectura inicial si el pin ya está LOW (activo)
 if GPIO.input(PIN_INT) == 0 and first==0:
