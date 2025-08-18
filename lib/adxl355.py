@@ -241,8 +241,9 @@ class ADXL355:
         return self.spi_read(FIFA_ENTRY)[0] & 0x3F
 
     def read_fifo(self, samples):
-        fifo_entry=self.fifo_entries()
+        # fifo_entry=self.fifo_entries()
         # num_samples = fifo_entry // 9
+        fifo_entry=32
         if fifo_entry >= samples:
             fifo_data = self.spi_read(FIFO_DATA, samples * 9)
 

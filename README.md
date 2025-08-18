@@ -25,3 +25,9 @@ https://www.analog.com/media/en/technical-documentation/data-sheets/adxl354_adxl
 
 **Datasheet ADXL355Z**:
 https://www.analog.com/media/en/technical-documentation/user-guides/EVAL-ADXL354-355-UG-1030.pdf
+
+**Temas faltantes:**
+- Calibrar datos a grabar en archivo
+- Configuración de ODR
+- Configuración de numero de samples FIFO
+- Arreglar grabacion manual

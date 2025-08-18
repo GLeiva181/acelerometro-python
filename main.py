@@ -1,3 +1,7 @@
+import RPi.GPIO as GPIO
+from statistics import mean
+import bisect
+import queue
 import tkinter as tk
 from tkinter import ttk, filedialog
 import random
@@ -18,9 +22,24 @@ from adxl355 import ADXL355
 
 CONFIG_FILE = "config.json"
 
+# ==== Configuración GPIO ====
+PIN_INT = 22  # Pin físico
+GPIO.setmode(GPIO.BOARD)
+GPIO.setup(PIN_INT, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pull-up para active-low
+
 class Sensor:
     last_correct_axes = (0,0,0)
     samples_fifo = 1
+
+    # ==== Configuración ====
+    HISTORICO_SEGUNDOS = 60
+    FRECUENCIA_MAX_HZ = 4000
+    MAX_MUESTRAS = HISTORICO_SEGUNDOS * FRECUENCIA_MAX_HZ  # 1 minuto a 4 kHz
+
+    # Deque para histórico
+    data_deque = deque(maxlen=MAX_MUESTRAS)
+    data_deque.append({'x':0,'y':0,'z':0,'temp':0,'timestamp':0})
+
     """Gestiona la comunicación con el sensor ADXL355 o la simulación de datos."""
     def __init__(self):
         self.sensor_detectado = False
@@ -31,17 +50,12 @@ class Sensor:
         except Exception as e:
             print(f"Sensor ADXL355 no detectado: {e}")
 
-    def leer_datos_reales(self):
-        if not self.sensor_detectado: return 0.0, 0.0, 0.0, 0.0
-        # axes = self.adxl355.get_axes_norm()
-        axes = self.adxl355.read_fifo(self.samples_fifo)
-        if axes is None:
-            axes = self.last_correct_axes
-        else:
-            self.last_correct_axes = axes
-
-        temp = self.adxl355.get_temperature()
-        return axes['x'], axes['y'], axes['z'], temp
+    def leer_fifo(self, channel=None):
+        data = self.adxl355.read_fifo(32)
+        if data is not None:
+            data["temp"] = self.adxl355.get_temperature()
+            data["timestamp"] = time.time()
+            self.data_deque.append(data)  # Guardar en histórico
 
     def leer_datos_simulados(self, event_state):
         if event_state == 'RECORDING' or (random.random() < 0.01 and event_state == 'IDLE'):
@@ -50,8 +64,27 @@ class Sensor:
             accel_x, accel_y, accel_z = random.uniform(-0.05, 0.05), random.uniform(-0.05, 0.05), random.uniform(0.95, 1.05)
         temp = random.uniform(20, 30)
         return accel_x, accel_y, accel_z, temp
+    
+    def datos_entre_tiempos(self, t_inicio, t_fin):
+        """
+        Devuelve una lista con los datos del deque entre dos timestamps usando búsqueda binaria.
+        Se asume que los datos están ordenados por 'timestamp'.
+        """
+        # Convertir deque a lista para usar bisect
+        data_list = list(self.data_deque)
+
+        # Extraer lista de timestamps
+        timestamps = [item["timestamp"] for item in data_list]
+
+        # Encontrar posición inicial y final usando bisect
+        idx_inicio = bisect.bisect_left(timestamps, t_inicio)
+        idx_fin = bisect.bisect_right(timestamps, t_fin)
+
+        # Retornar solo el rango de datos
+        return deque(data_list[idx_inicio:idx_fin])
 
 class AcelerometroApp:
+    
     def __init__(self, root):
         self.root = root
         self.root.title("Visor de Acelerómetro")
@@ -61,7 +94,6 @@ class AcelerometroApp:
         self.inicializar_variables_estado()
         self.crear_widgets()
         self.cargar_configuracion()
-
         self.after_job = self.root.after(1, self.actualizar_datos)
 
     def inicializar_variables_estado(self):
@@ -180,19 +212,29 @@ class AcelerometroApp:
         config_notebook.add(vis_tab, text='Visualización y Modo')
 
         # --- Pestaña de Calibración ---
-        cal_frame = ttk.LabelFrame(cal_tab, text="Calibración de Ejes", padding=10); cal_frame.pack(fill=tk.X, pady=5, padx=5)
-        realtime_frame = ttk.LabelFrame(cal_frame, text="Valores en Tiempo Real", padding=5); realtime_frame.pack(fill=tk.X, pady=5)
+        cal_frame = ttk.LabelFrame(cal_tab, text="Calibración de Ejes", padding=10); 
+        cal_frame.pack(fill=tk.X, pady=5, padx=5)
+        realtime_frame = ttk.LabelFrame(cal_frame, text="Valores en Tiempo Real", padding=5); 
+        realtime_frame.pack(fill=tk.X, pady=5)
         self.var_raw_x, self.var_raw_y, self.var_raw_z = tk.StringVar(), tk.StringVar(), tk.StringVar()
         self.var_cal_x, self.var_cal_y, self.var_cal_z = tk.StringVar(), tk.StringVar(), tk.StringVar()
-        tk.Label(realtime_frame, text="Raw X:").grid(row=0, column=0, sticky='w'); tk.Label(realtime_frame, textvariable=self.var_raw_x, width=10).grid(row=0, column=1)
-        tk.Label(realtime_frame, text="Raw Y:").grid(row=1, column=0, sticky='w'); tk.Label(realtime_frame, textvariable=self.var_raw_y, width=10).grid(row=1, column=1)
-        tk.Label(realtime_frame, text="Raw Z:").grid(row=2, column=0, sticky='w'); tk.Label(realtime_frame, textvariable=self.var_raw_z, width=10).grid(row=2, column=1)
-        tk.Label(realtime_frame, text="Cal. X:").grid(row=0, column=2, sticky='w'); tk.Label(realtime_frame, textvariable=self.var_cal_x, width=10).grid(row=0, column=3)
-        tk.Label(realtime_frame, text="Cal. Y:").grid(row=1, column=2, sticky='w'); tk.Label(realtime_frame, textvariable=self.var_cal_y, width=10).grid(row=1, column=3)
-        tk.Label(realtime_frame, text="Cal. Z:").grid(row=2, column=2, sticky='w'); tk.Label(realtime_frame, textvariable=self.var_cal_z, width=10).grid(row=2, column=3)
+        tk.Label(realtime_frame, text="Raw X:").grid(row=0, column=0, sticky='w'); 
+        tk.Label(realtime_frame, textvariable=self.var_raw_x, width=10).grid(row=0, column=1)
+        tk.Label(realtime_frame, text="Raw Y:").grid(row=1, column=0, sticky='w'); 
+        tk.Label(realtime_frame, textvariable=self.var_raw_y, width=10).grid(row=1, column=1)
+        tk.Label(realtime_frame, text="Raw Z:").grid(row=2, column=0, sticky='w'); 
+        tk.Label(realtime_frame, textvariable=self.var_raw_z, width=10).grid(row=2, column=1)
+        tk.Label(realtime_frame, text="Cal. X:").grid(row=0, column=2, sticky='w'); 
+        tk.Label(realtime_frame, textvariable=self.var_cal_x, width=10).grid(row=0, column=3)
+        tk.Label(realtime_frame, text="Cal. Y:").grid(row=1, column=2, sticky='w'); 
+        tk.Label(realtime_frame, textvariable=self.var_cal_y, width=10).grid(row=1, column=3)
+        tk.Label(realtime_frame, text="Cal. Z:").grid(row=2, column=2, sticky='w'); 
+        tk.Label(realtime_frame, textvariable=self.var_cal_z, width=10).grid(row=2, column=3)
 
-        matrix_control_frame = ttk.LabelFrame(cal_frame, text="Matriz de Calibración", padding=5); matrix_control_frame.pack(fill=tk.X, pady=5)
-        cal_btn_frame = tk.Frame(matrix_control_frame); cal_btn_frame.pack()
+        matrix_control_frame = ttk.LabelFrame(cal_frame, text="Matriz de Calibración", padding=5); 
+        matrix_control_frame.pack(fill=tk.X, pady=5)
+        cal_btn_frame = tk.Frame(matrix_control_frame); 
+        cal_btn_frame.pack()
         tk.Button(cal_btn_frame, text="Calibrar (Poner a Cero)", command=self.calibrar_ejes).pack(side=tk.LEFT, padx=5)
         tk.Button(cal_btn_frame, text="Restablecer Matriz", command=self.reset_calibracion).pack(side=tk.LEFT, padx=5)
         matrix_frame = tk.Frame(matrix_control_frame); matrix_frame.pack(pady=5)
@@ -332,10 +374,24 @@ class AcelerometroApp:
         if self.var_simulacion_activada.get():
             return self.sensor.leer_datos_simulados(self.event_state)
         else:
-            return self.sensor.leer_datos_reales()
+            # print(self.sensor.data_deque[-1])
+            return self.sensor.data_deque[-1]
+    
+    def leer_datos_calibrados(self):
+        return self.calibrar_valores(self.leer_datos_sensor())
 
+    def calibrar_valores(self, datos):
+        datos_calibrados = list(datos)
+        g_calibrado = self.matriz_calibracion.dot(np.array([datos_calibrados["x"], datos_calibrados["y"], datos_calibrados["z"]]))
+        datos_calibrados["x"], datos_calibrados["y"], datos_calibrados["z"] = g_calibrado[0], g_calibrado[1], g_calibrado[2]
+        return datos_calibrados
+    
     def calibrar_ejes(self):
-        x, y, z, _ = self.leer_datos_sensor()
+        # datos = self.leer_datos_sensor()
+        datos = self.sensor.data_deque[-1]
+        x = datos["x"]
+        y = datos["y"]
+        z = datos["z"]
         g_ref = np.array([x, y, z])
         self.matriz_calibracion = self.get_rotation_matrix_to_align(g_ref, np.array([0, 0, 1]))
         self.actualizar_matriz_calibracion_vars()
@@ -363,15 +419,40 @@ class AcelerometroApp:
     def toggle_grabacion(self):
         self.grabando = not self.grabando
 
+    # def get_rotation_matrix_to_align(self, vec_a, vec_b):
+    #     vec_a_norm = np.linalg.norm(vec_a)
+    #     if vec_a_norm == 0: return np.eye(3)
+    #     vec_a = vec_a / vec_a_norm
+    #     vec_b = vec_b / np.linalg.norm(vec_b)
+    #     v = np.cross(vec_a, vec_b); s = np.linalg.norm(v); c = np.dot(vec_a, vec_b)
+    #     vx = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+    #     if s == 0: return np.eye(3)
+    #     return np.eye(3) + vx + vx.dot(vx) * ((1 - c) / (s**2))
     def get_rotation_matrix_to_align(self, vec_a, vec_b):
-        vec_a_norm = np.linalg.norm(vec_a)
-        if vec_a_norm == 0: return np.eye(3)
-        vec_a = vec_a / vec_a_norm
+        vec_a = vec_a / np.linalg.norm(vec_a)
         vec_b = vec_b / np.linalg.norm(vec_b)
-        v = np.cross(vec_a, vec_b); s = np.linalg.norm(v); c = np.dot(vec_a, vec_b)
-        vx = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
-        if s == 0: return np.eye(3)
-        return np.eye(3) + vx + vx.dot(vx) * ((1 - c) / (s**2))
+
+        v = np.cross(vec_a, vec_b)
+        s = np.linalg.norm(v)
+        c = np.dot(vec_a, vec_b)
+
+        if s == 0:
+            if c > 0:  # vectores iguales
+                return np.eye(3)
+            else:      # vectores opuestos -> rotación 180° en eje ortogonal
+                axis = np.array([1, 0, 0]) if abs(vec_a[0]) < 0.9 else np.array([0, 1, 0])
+                axis = axis - vec_a * np.dot(axis, vec_a)
+                axis = axis / np.linalg.norm(axis)
+                vx = np.array([[0, -axis[2], axis[1]], 
+                            [axis[2], 0, -axis[0]], 
+                            [-axis[1], axis[0], 0]])
+                return np.eye(3) + 2 * vx @ vx
+
+        vx = np.array([[0, -v[2], v[1]], 
+                    [v[2], 0, -v[0]], 
+                    [-v[1], v[0], 0]])
+        return np.eye(3) + vx + vx @ vx * ((1 - c) / (s**2))
+
 
     def actualizar_datos(self):
         # --- Actualizar tamaños de buffers y deques según configuración ---
@@ -403,10 +484,14 @@ class AcelerometroApp:
         # --- Lectura y promediado de datos del sensor ---
         if not self.sensor.sensor_detectado and not self.var_simulacion_activada.get(): 
             self.error_banner.pack(side=tk.BOTTOM, fill=tk.X)
-        else: 
+        else:
             self.error_banner.pack_forget()
 
-        x_raw, y_raw, z_raw, temp = self.leer_datos_sensor()
+        data = self.leer_datos_sensor()
+        x_raw = data["x"]
+        y_raw = data["y"]
+        z_raw = data["z"]
+        temp = data["temp"]
 
         if self.var_promedio_habilitado.get():
             self.datos_promedio.append((x_raw, y_raw, z_raw, temp))
@@ -418,8 +503,10 @@ class AcelerometroApp:
         self.pre_event_buffer.append(log_line)
 
         # --- Calibración y actualización de historial ---
-        g_calibrado = self.matriz_calibracion.dot(np.array([x_raw, y_raw, z_raw]))
-        x, y, z = g_calibrado[0], g_calibrado[1], g_calibrado[2]
+        # g_calibrado = self.matriz_calibracion.dot(np.array([x_raw, y_raw, z_raw]))
+        # x, y, z = g_calibrado[0], g_calibrado[1], g_calibrado[2]
+        datos_calibrados = self.leer_datos_calibrados()
+        x, y, z = datos_calibrados["x"], datos_calibrados["y"], datos_calibrados["z"]
 
         self.history_x.append(x)
         self.history_y.append(y)
@@ -478,9 +565,11 @@ class AcelerometroApp:
             if self.event_state == 'IDLE':
                 if not is_stable:
                     self.event_state = 'RECORDING'
+                    self.recording_t_initial = time.time()-float(self.var_pre_record_time.get())
             elif self.event_state == 'RECORDING':
                 if (time.time() - self.last_unstable_time) > cooldown_duration:
                     self.event_state = 'IDLE'
+                    self.grabar_archivo(self.recording_t_initial, time.time())
         else:
             self.event_state = 'IDLE'
 
@@ -488,21 +577,61 @@ class AcelerometroApp:
         just_started_manual = self.grabando and not self.was_grabbing_last_frame
         just_started_auto = is_now_auto_recording and not was_auto_recording
 
-        if just_started_manual or just_started_auto:
-            base_name = self.var_nombre_archivo.get() or "datos"
-            timestamp_str = datetime.now().strftime("%y%m%d-%H%M%S")
-            self.current_log_filename = os.path.join("data", f"{base_name}_{timestamp_str}.txt")
-            with open(self.current_log_filename, "w") as f:
-                f.writelines(list(self.pre_event_buffer))
-        elif self.grabando or is_now_auto_recording:
-            if self.current_log_filename:
-                with open(self.current_log_filename, "a") as f:
-                    f.write(current_log_line)
+        # if just_started_manual or just_started_auto:
+        #     base_name = self.var_nombre_archivo.get() or "datos"
+        #     timestamp_str = datetime.now().strftime("%y%m%d-%H%M%S")
+        #     self.current_log_filename = os.path.join("data", f"{base_name}_{timestamp_str}.txt")
+        #     with open(self.current_log_filename, "w") as f:
+        #         f.writelines(list(self.pre_event_buffer))
+        # elif self.grabando or is_now_auto_recording:
+        #     if self.current_log_filename:
+        #         with open(self.current_log_filename, "a") as f:
+        #             f.write(current_log_line)
 
-        if self.grabando: self.boton_grabar.config(text="⏹ Detener Grabación", bg="red", state='normal')
-        elif is_now_auto_recording: self.boton_grabar.config(text="Grabando Evento...", bg="orange", state='disabled')
-        else: self.boton_grabar.config(text="▶ Iniciar Grabación", bg="green", state='normal')
+        if self.grabando: 
+            self.boton_grabar.config(text="⏹ Detener Grabación", bg="red", state='normal')
+        elif is_now_auto_recording: 
+            self.boton_grabar.config(text="Grabando Evento...", bg="orange", state='disabled')
+        else: 
+            self.boton_grabar.config(text="▶ Iniciar Grabación", bg="green", state='normal')
         self.was_grabbing_last_frame = self.grabando
+
+    def grabar_archivo(self, t_inicio, t_fin):
+        base_name = self.var_nombre_archivo.get() or "datos"
+        timestamp_str = datetime.now().strftime("%y%m%d-%H%M%S")
+        # datos = self.sensor.datos_entre_tiempos(t_inicio, t_fin)
+        datos = self.sensor.data_deque
+        for d in datos:
+            d = self.calibrar_valores(d)
+        n_muestras = int(self.var_promedio_muestras.get())
+        data_list = list(datos)
+        promediados = []
+        if self.var_promedio_habilitado:
+            for i in range(0,len(data_list),n_muestras):
+                bloque = data_list[i:i+n_muestras]
+                if not bloque:
+                    continue
+                avg_x = mean(d["x"] for d in bloque)
+                avg_y = mean(d["y"] for d in bloque)
+                avg_z = mean(d["z"] for d in bloque)
+                avg_temp = mean(d["temp"] for d in bloque)
+                avg_ts = mean(d["timestamp"] for d in bloque)
+
+                promediados.append({
+                    "timestamp": avg_ts,
+                    "x": avg_x,
+                    "y": avg_y,
+                    "z": avg_z,
+                    "temp": avg_temp
+                })
+            data_list = promediados
+
+        current_log_filename = os.path.join("data", f"{base_name}_{timestamp_str}.txt")
+        with open(current_log_filename, "w") as f:
+            for d in datos:
+                ts_str = datetime.fromtimestamp(d["timestamp"]).isoformat()
+                f.write(f"{ts_str},{d['x']:.4f},{d['y']:.4f},{d['z']:.4f},{d['temp']:.2f}\n")
+        
 
     def actualizar_gui_datos(self, x, y, z, temp, x_raw, y_raw, z_raw):
         self.var_x.set(f"{x:+.4f} g"); 
@@ -535,7 +664,9 @@ class AcelerometroApp:
         for i, axis in enumerate([np.eye(3)[j] for j in range(3)]):
             rot_axis = r.dot(axis)
             self.ax_vector.quiver(0, 0, 0, rot_axis[0], rot_axis[1], rot_axis[2], color=['r','g','b'][i], arrow_length_ratio=0.2)
-        self.ax_vector.set_xlim([-1, 1]); self.ax_vector.set_ylim([-1, 1]); self.ax_vector.set_zlim([-1, 1])
+        self.ax_vector.set_xlim([-1, 1]); 
+        self.ax_vector.set_ylim([-1, 1]); 
+        self.ax_vector.set_zlim([-1, 1])
         self.canvas_vector.draw()
 
     def animar_grafico_principal(self, i):
@@ -624,12 +755,24 @@ class AcelerometroApp:
 
     def on_closing(self):
         self.guardar_configuracion()
-        if self.after_job: self.root.after_cancel(self.after_job)
-        try: self.ani.event_source.stop() 
-        except: pass
-        plt.close('all'); self.root.quit(); self.root.destroy()
+        if self.after_job: 
+            self.root.after_cancel(self.after_job)
+        try: 
+            self.ani.event_source.stop() 
+        except: 
+            pass
+        plt.close('all'); 
+        self.root.quit(); 
+        self.root.destroy()
 
+first=0
 if __name__ == "__main__":
     root = tk.Tk()
     app = AcelerometroApp(root)
+    GPIO.add_event_detect(PIN_INT, GPIO.FALLING, callback=app.sensor.leer_fifo)
+    if GPIO.input(PIN_INT) == 0 and first==0:
+        first=1
+        app.sensor.leer_fifo()
+
+
     root.mainloop()
