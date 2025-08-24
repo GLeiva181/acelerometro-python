@@ -22,4 +22,7 @@ class GPIOInterrupt:
         ready = self.gpio.wait_edge_events(timeout=timeout)
         if ready:
             return self.gpio.read_edge_events(max_events=1)
-        return []
+        else:
+            return []
+
+    

@@ -70,17 +70,17 @@ class ADXL355:
 
         # Check device ID
         device_id = self.read_data(DEVID_AD)
-        if device_id != 0xAD:
+        if device_id != 0xAD: # AD = 173 en decimal
             raise RuntimeError(f"ADXL355 sensor not found or not responding. Expected DEVID_AD 0xAD, got 0x{device_id:02X}")
 
         # Device init
-        self._set_measure_range(measure_range)
-        self._set_odr(0x00) # Set ODR to 4000 Hz
-        self._set_interrupt()
-        self._enable_measure_mode()
+        self.set_measure_range(measure_range)
+        self.set_odr(0x00) # Set ODR to 4000 Hz
+        self.set_interrupt()
+        self.enable_measure_mode()
         self.get_measure_range()
 
-    def _set_odr(self, odr_value):
+    def set_odr(self, odr_value):
         """Sets the Output Data Rate (ODR) on ADXL355 device.
 
         Args:
@@ -137,7 +137,7 @@ class ADXL355:
 
         return self.spi.xfer2(spi_ops)[1:]
 
-    def _set_measure_range(self, measure_range):
+    def set_measure_range(self, measure_range):
         """Sets measure range on ADXL355 device.
 
         Args:
@@ -148,7 +148,7 @@ class ADXL355:
         """
         self.write_data(RANGE, measure_range)
     
-    def _set_interrupt(self):
+    def set_interrupt(self):
         """Sets interrupt on ADXL355 device.
         """
         self.write_data(INTERRUPT_MAP, INT_MODE)
@@ -167,14 +167,14 @@ class ADXL355:
             raise ValueError("Invalid measure range value")
         return self.measure_range
 
-    def _enable_measure_mode(self):
+    def enable_measure_mode(self,measure_mode=MEASURE_MODE):
         """
         Enables measure mode on ADXL355 device.
 
         Returns:
             None
         """
-        self.write_data(POWER_CTL, MEASURE_MODE)
+        self.write_data(POWER_CTL, measure_mode)
 
     @staticmethod
     def bytes_to_int20(b):

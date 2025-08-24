@@ -13,5 +13,6 @@ services:
       - "/dev/spidev0.1:/dev/spidev0.1"
     volumes:
       - .:/app   # monta el código local para desarrollo
+      - ./data:/app/data
     environment:
       - PYTHONUNBUFFERED=1
