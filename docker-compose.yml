@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  acelerometro:
+    build: .
+    container_name: test-rp
+    privileged: true   # necesario para acceder a /dev/gpio en la Raspberry
+    devices:
+      - "/dev/gpiomem:/dev/gpiomem"  # acceso a GPIO
+      - "/dev/gpiochip0:/dev/gpiochip0" # chip GPIO 0
+      - "/dev/gpiochip1:/dev/gpiochip1" # chip GPIO 1
+      - "/dev/spidev0.0:/dev/spidev0.0" # si usás SPI
+      - "/dev/spidev0.1:/dev/spidev0.1"
+    volumes:
+      - .:/app   # monta el código local para desarrollo
+    environment:
+      - PYTHONUNBUFFERED=1

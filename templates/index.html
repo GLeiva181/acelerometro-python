@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acelerómetro</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        .data-display { display: flex; justify-content: space-around; margin-bottom: 20px; }
+        .data-box { padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Visor de Acelerómetro</h1>
+        <div class="data-display">
+            <div class="data-box"><strong>X:</strong> <span id="x-value">...</span></div>
+            <div class="data-box"><strong>Y:</strong> <span id="y-value">...</span></div>
+            <div class="data-box"><strong>Z:</strong> <span id="z-value">...</span></div>
+            <div class="data-box"><strong>Temp:</strong> <span id="temp-value">...</span></div>
+        </div>
+        <div>
+            <canvas id="accelerometerChart"></canvas>
+        </div>
+        <div style="margin-top: 20px;">
+            <button id="record-button">▶ Iniciar Grabación</button>
+        </div>
+        <h2>Configuración</h2>
+        <div id="config-form">
+             <!-- Configuration options will go here -->
+        </div>
+    </div>
+
+    <script>
+        const xValue = document.getElementById('x-value');
+        const yValue = document.getElementById('y-value');
+        const zValue = document.getElementById('z-value');
+        const tempValue = document.getElementById('temp-value');
+        const recordButton = document.getElementById('record-button');
+
+        const ctx = document.getElementById('accelerometerChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    { label: 'X', data: [], borderColor: 'red', fill: false },
+                    { label: 'Y', data: [], borderColor: 'green', fill: false },
+                    { label: 'Z', data: [], borderColor: 'blue', fill: false }
+                ]
+            },
+            options: {
+                animation: false,
+                scales: {
+                    x: {
+                        type: 'linear',
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+
+        let recording = false;
+
+        async function fetchData() {
+            const response = await fetch('/data');
+            const data = await response.json();
+
+            xValue.textContent = data.x.toFixed(4) + ' g';
+            yValue.textContent = data.y.toFixed(4) + ' g';
+            zValue.textContent = data.z.toFixed(4) + ' g';
+            tempValue.textContent = data.temp.toFixed(1) + ' °C';
+
+            const time = new Date(data.timestamp * 1000);
+            const label = time.getHours() + ':' + time.getMinutes() + ':' + time.getSeconds() + '.' + time.getMilliseconds();
+
+            chart.data.labels.push(label);
+            chart.data.datasets[0].data.push(data.x);
+            chart.data.datasets[1].data.push(data.y);
+            chart.data.datasets[2].data.push(data.z);
+
+            // Limit the number of data points
+            if (chart.data.labels.length > 100) {
+                chart.data.labels.shift();
+                chart.data.datasets.forEach(dataset => dataset.data.shift());
+            }
+
+            chart.update();
+        }
+
+        recordButton.addEventListener('click', async () => {
+            recording = !recording;
+            const response = await fetch('/record', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ recording: recording })
+            });
+            const data = await response.json();
+            recordButton.textContent = data.recording ? '⏹ Detener Grabación' : '▶ Iniciar Grabación';
+            recordButton.style.backgroundColor = data.recording ? 'red' : 'green';
+        });
+
+        setInterval(fetchData, 200); // Update every 200ms
+    </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+RPi.GPIO
+gpiod
+flask
+numpy
+pandas
+spidev

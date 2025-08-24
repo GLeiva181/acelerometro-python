@@ -31,3 +31,6 @@ https://www.analog.com/media/en/technical-documentation/user-guides/EVAL-ADXL354
 - Configuración de ODR
 - Configuración de numero de samples FIFO
 OK - Arreglar grabacion manual
+
+**GPIOD**
+https://libgpiod.readthedocs.io/en/latest/python_line_settings.html
