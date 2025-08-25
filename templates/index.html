@@ -217,6 +217,65 @@
         </details>
 
         <details class="collapsible-section">
+            <summary>Detección de Eventos</summary>
+            <div class="content">
+                <div class="control-group">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="autoRecordCheck" style="width: auto; margin-right: 10px; transform: scale(1.2);">
+                        Grabación por evento
+                    </label>
+                </div>
+                <div class="control-group">
+                    <label for="cooldownInput">Cooldown (s)</label>
+                    <input type="number" id="cooldownInput" min="0" step="0.1" class="controls">
+                </div>
+                <div class="control-group">
+                    <label for="preRecInput">Pre-grabación (s)</label>
+                    <input type="number" id="preRecInput" min="0" step="0.1" class="controls">
+                </div>
+                <div class="control-group">
+                    <label for="timeWindowInput">Duración grabación (s)</label>
+                    <input type="number" id="timeWindowInput" min="0" step="0.1" class="controls">
+                </div>
+
+                <hr style="margin: 20px 0; border-top: 1px solid var(--border-color);">
+
+                <div class="control-group">
+                    <label>Modo de Umbral</label>
+                    <div style="display: flex; gap: 15px; margin-top: 5px;">
+                        <label><input type="radio" name="umbralMode" value="Absoluto" checked> Absoluto</label>
+                        <label><input type="radio" name="umbralMode" value="Relativo"> Relativo</label>
+                    </div>
+                </div>
+
+                <div id="absolute-thresholds">
+                    <div class="control-group"><label>Límites Eje X</label><div style="display:flex; gap: 5px;"><input type="number" id="minX" step="any" placeholder="Min" class="controls"><input type="number" id="maxX" step="any" placeholder="Max" class="controls"></div></div>
+                    <div class="control-group"><label>Límites Eje Y</label><div style="display:flex; gap: 5px;"><input type="number" id="minY" step="any" placeholder="Min" class="controls"><input type="number" id="maxY" step="any" placeholder="Max" class="controls"></div></div>
+                    <div class="control-group"><label>Límites Eje Z</label><div style="display:flex; gap: 5px;"><input type="number" id="minZ" step="any" placeholder="Min" class="controls"><input type="number" id="maxZ" step="any" placeholder="Max" class="controls"></div></div>
+                </div>
+
+                <div id="relative-thresholds" style="display: none;">
+                    <div class="control-group">
+                        <button id="autoCenterBtn" class="btn" style="background-color: #17a2b8; margin-bottom: 10px;">Auto-Centrar</button>
+                        <div id="center-display" class="offsets-info">
+                            <small>Centro: X: 0.0, Y: 0.0, Z: 1.0</small>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label for="deltaX">Delta X</label><input type="number" id="deltaX" step="any" class="controls">
+                    </div>
+                    <div class="control-group">
+                        <label for="deltaY">Delta Y</label><input type="number" id="deltaY" step="any" class="controls">
+                    </div>
+                    <div class="control-group">
+                        <label for="deltaZ">Delta Z</label><input type="number" id="deltaZ" step="any" class="controls">
+                    </div>
+                </div>
+                <button id="saveEventConfigBtn" class="btn btn-save" style="margin-top: 15px;">Guardar Config. Evento</button>
+            </div>
+        </details>
+
+        <details class="collapsible-section">
             <summary>Configuración Sensor</summary>
             <div class="content">
                 <div class="control-group">
@@ -286,6 +345,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveConfigBtn = document.getElementById('saveConfigBtn');
     const zeroBtn = document.getElementById('zeroBtn');
     const saveOffsetsBtn = document.getElementById('saveOffsetsBtn');
+    const saveEventConfigBtn = document.getElementById('saveEventConfigBtn');
+    const autoCenterBtn = document.getElementById('autoCenterBtn');
     const statusIndicator = document.getElementById('status-indicator');
 
     const fetchData = async (url, options) => {
@@ -357,6 +418,37 @@ document.addEventListener('DOMContentLoaded', () => {
             const offsetsDisplay = document.getElementById('offsets-display');
             offsetsDisplay.innerHTML = `<small>Offsets: X: ${cfg.offsets.x.toFixed(3)}, Y: ${cfg.offsets.y.toFixed(3)}, Z: ${cfg.offsets.z.toFixed(3)}</small>`;
         }
+
+        // Populate event detection fields
+        if (status.config) {
+            const cfg = status.config;
+            document.getElementById('autoRecordCheck').checked = cfg.auto_record;
+            document.getElementById('cooldownInput').value = cfg.cooldown;
+            document.getElementById('preRecInput').value = cfg.pre_record_time;
+            document.getElementById('timeWindowInput').value = cfg.time_window;
+
+            const umbralRadio = document.querySelector(`input[name="umbralMode"][value="${cfg.umbral_mode}"]`);
+            if (umbralRadio) {
+                umbralRadio.checked = true;
+                umbralRadio.dispatchEvent(new Event('change'));
+            }
+
+            document.getElementById('minX').value = cfg.min_x;
+            document.getElementById('maxX').value = cfg.max_x;
+            document.getElementById('minY').value = cfg.min_y;
+            document.getElementById('maxY').value = cfg.max_y;
+            document.getElementById('minZ').value = cfg.min_z;
+            document.getElementById('maxZ').value = cfg.max_z;
+
+            document.getElementById('deltaX').value = cfg.delta_x;
+            document.getElementById('deltaY').value = cfg.delta_y;
+            document.getElementById('deltaZ').value = cfg.delta_z;
+
+            const centerDisplay = document.getElementById('center-display');
+            if (cfg.center_x !== undefined) {
+                centerDisplay.innerHTML = `<small>Centro: X: ${cfg.center_x.toFixed(3)}, Y: ${cfg.center_y.toFixed(3)}, Z: ${cfg.center_z.toFixed(3)}</small>`;
+            }
+        }
     }
 
     recordBtn.addEventListener('click', async () => {
@@ -416,6 +508,53 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    document.querySelectorAll('input[name="umbralMode"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            document.getElementById('absolute-thresholds').style.display = this.value === 'Absoluto' ? 'block' : 'none';
+            document.getElementById('relative-thresholds').style.display = this.value === 'Relativo' ? 'block' : 'none';
+        });
+    });
+
+    autoCenterBtn.addEventListener('click', async () => {
+        statusIndicator.textContent = 'Auto-centrando...';
+        const result = await fetchData('/auto_center', { method: 'POST' });
+        if (result) {
+            statusIndicator.textContent = result.message;
+            statusIndicator.style.backgroundColor = result.success ? 'var(--success-color)' : 'var(--danger-color)';
+            if (result.success) {
+                updateUIFromStatus({ config: result.config });
+            }
+        }
+    });
+
+    saveEventConfigBtn.addEventListener('click', async () => {
+        const eventConfig = {
+            auto_record: document.getElementById('autoRecordCheck').checked,
+            cooldown: document.getElementById('cooldownInput').value,
+            pre_record_time: document.getElementById('preRecInput').value,
+            time_window: document.getElementById('timeWindowInput').value,
+            umbral_mode: document.querySelector('input[name="umbralMode"]:checked').value,
+            min_x: document.getElementById('minX').value, max_x: document.getElementById('maxX').value,
+            min_y: document.getElementById('minY').value, max_y: document.getElementById('maxY').value,
+            min_z: document.getElementById('minZ').value, max_z: document.getElementById('maxZ').value,
+            delta_x: document.getElementById('deltaX').value,
+            delta_y: document.getElementById('deltaY').value,
+            delta_z: document.getElementById('deltaZ').value,
+        };
+
+        statusIndicator.textContent = 'Guardando config. de evento...';
+        const result = await fetchData('/event_config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(eventConfig)
+        });
+
+        if (result) {
+            statusIndicator.textContent = result.message;
+            statusIndicator.style.backgroundColor = result.success ? 'var(--success-color)' : 'var(--danger-color)';
+        }
+    });
+
     saveConfigBtn.addEventListener('click', async () => {
         const config = {
             range: document.getElementById('rangeSelect').value,
@@ -456,21 +595,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     fetchData('/status').then(updateUIFromStatus);
 });
-</script>
-</body>
-</html>
-            }
-            chart.update();
-
-            // Actualizamos valores en el panel
-            document.getElementById("xVal").textContent = sensor.x.toFixed(3);
-            document.getElementById("yVal").textContent = sensor.y.toFixed(3);
-            document.getElementById("zVal").textContent = sensor.z.toFixed(3);
-            document.getElementById("tempVal").textContent = sensor.temp.toFixed(2);
-        });
-}
-
-setInterval(updateData, 300); // actualizar cada 0.3s
 </script>
 </body>
 </html>

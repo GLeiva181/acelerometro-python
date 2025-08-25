@@ -21,7 +21,19 @@ config = {
     "fifo_samples": 32,
     "offsets": {'x': 0.0, 'y': 0.0, 'z': 0.0},
     "filename": "datos_acelerometro",
-    "stabilization": 0.0
+    "stabilization": 0.0,
+    # Configuración de Detección de Eventos
+    "auto_record": False,
+    "cooldown": 5.0,
+    "pre_record_time": 2.0,
+    "time_window": 10.0,
+    "umbral_mode": "Absoluto",  # 'Absoluto' o 'Relativo'
+    "auto_center": True,
+    "center_x": 0.0, "center_y": 0.0, "center_z": 1.0,
+    "delta_x": 0.1, "delta_y": 0.1, "delta_z": 0.1,
+    "min_x": -0.5, "max_x": 0.5,
+    "min_y": -0.5, "max_y": 0.5,
+    "min_z": 0.5, "max_z": 1.5,
 }
 
 def save_config():
@@ -52,6 +64,8 @@ irq = None
 sensor_available = False
 recording = False
 recording_start_time = 0.0
+last_event_time = 0.0
+auto_recording_active = False
 
 try:
     sensor = ADXL355(measure_range=config['range'])
@@ -109,16 +123,71 @@ def grabar_archivo(t_inicio, t_fin, base_name="datos_acelerometro"):
             f.write(f"{ts_str},{x_cal:.6f},{y_cal:.6f},{z_cal:.6f},{d['temp']:.2f}\n")
     print(f"Archivo guardado en {file_path}")
 
+def check_for_event(data):
+    """Verifica si el punto de datos dispara un evento según la configuración."""
+    # Los datos del buffer no tienen la calibración de offset aplicada
+    x = data['x'] - config['offsets']['x']
+    y = data['y'] - config['offsets']['y']
+    z = data['z'] - config['offsets']['z']
+
+    mode = config.get('umbral_mode', 'Absoluto')
+    
+    if mode == 'Absoluto':
+        if not (config.get('min_x', 0) <= x <= config.get('max_x', 0) and
+                config.get('min_y', 0) <= y <= config.get('max_y', 0) and
+                config.get('min_z', 0) <= z <= config.get('max_z', 0)):
+            return True
+    elif mode == 'Relativo':
+        if (abs(x - config.get('center_x', 0)) > config.get('delta_x', 0.1) or
+            abs(y - config.get('center_y', 0)) > config.get('delta_y', 0.1) or
+            abs(z - config.get('center_z', 1.0)) > config.get('delta_z', 0.1)):
+            return True
+            
+    return False
+
+def stop_auto_record_thread(start_time):
+    """Espera a que pase la ventana de grabación y luego detiene la grabación."""
+    global recording, auto_recording_active
+    
+    record_duration = config.get('time_window', 10.0)
+    time.sleep(record_duration)
+
+    if auto_recording_active and abs(recording_start_time - start_time) < 0.1:
+        print(f"Finalizando grabación automática de {config.get('pre_record_time', 2.0) + record_duration}s.")
+        
+        t_inicio = recording_start_time
+        t_fin = time.time()
+        
+        event_filename = f"{config.get('filename', 'datos')}_evento"
+        grabar_archivo(t_inicio, t_fin, event_filename)
+
+        recording = False
+        auto_recording_active = False
+    else:
+        print("Grabación automática cancelada o ya detenida manualmente.")
+
 def irq_handler():
     """
-    Hilo que espera interrupciones del sensor y lee los datos del FIFO.
+    Hilo que espera interrupciones, lee FIFO y busca eventos.
     """
+    global last_event_time, recording, recording_start_time, auto_recording_active
     while True:
-        # El timeout evita que se bloquee indefinidamente si algo va mal
-        events = irq.wait_event(timeout=1.0) # Timeout en segundos
+        events = irq.wait_event(timeout=1.0)
         if events == [] or events:
-            # Leemos el FIFO cada vez que hay una interrupción
-            sensor.read_fifo_with_meta()
+            with sensor.buffer_lock:
+                start_idx = len(sensor.buffer)
+                sensor.read_fifo_with_meta()
+                new_data = list(sensor.buffer)[start_idx:]
+
+            if not recording and config.get('auto_record', False) and (time.time() - last_event_time) > config.get('cooldown', 5.0):
+                for d in new_data:
+                    if check_for_event(d):
+                        print(f"¡Evento detectado! Iniciando grabación automática.")
+                        last_event_time = time.time()
+                        recording, auto_recording_active = True, True
+                        recording_start_time = last_event_time - config.get('pre_record_time', 2.0)
+                        threading.Thread(target=stop_auto_record_thread, args=(recording_start_time,)).start()
+                        break
 
 @app.route("/")
 def index():
@@ -142,12 +211,13 @@ def get_data():
 
 @app.route('/record', methods=['POST'])
 def record_toggle():
-    global recording, recording_start_time, config
+    global recording, recording_start_time, config, auto_recording_active
     data = request.get_json()
     action = data.get('recording', False)
 
     if action and not recording:
         recording = True
+        auto_recording_active = False # Es una grabación manual
         recording_start_time = time.time()
         config['filename'] = data.get('filename', config['filename']).strip()
         if not config['filename']: # Evitar nombres vacíos
@@ -159,10 +229,11 @@ def record_toggle():
             config['stabilization'] = 0.0
         
         save_config()
-        print(f"Iniciando grabación (archivo: {config['filename']}, estabilización: {config['stabilization']}s)...")
+        print(f"Iniciando grabación manual (archivo: {config['filename']}, estabilización: {config['stabilization']}s)...")
 
     elif not action and recording:
         recording = False
+        auto_recording_active = False # Detiene también la lógica de auto-grabación
         t_inicio_grabacion = recording_start_time + config['stabilization']
         t_fin_grabacion = time.time()
         
@@ -172,7 +243,7 @@ def record_toggle():
             print("Grabación detenida antes de finalizar el tiempo de estabilización. No se guardó archivo.")
 
         recording_start_time = 0.0
-        print("Grabación detenida.")
+        print("Grabación detenida manualmente.")
 
     return jsonify({'recording': recording, 'config': config})
 
@@ -218,6 +289,49 @@ def set_offsets():
         return jsonify({'success': True, 'message': 'Offsets manuales guardados.', 'offsets': config['offsets']})
     except (ValueError, TypeError, KeyError) as e:
         return jsonify({'success': False, 'message': f'Datos inválidos: {e}'}), 400
+
+@app.route('/event_config', methods=['POST'])
+def event_config():
+    global config
+    data = request.get_json()
+    try:
+        for key in ['auto_record', 'umbral_mode', 'auto_center']:
+            if key in data:
+                if isinstance(data[key], bool):
+                    config[key] = data[key]
+                else:
+                    config[key] = str(data[key])
+
+        for key in ['cooldown', 'pre_record_time', 'time_window', 'delta_x', 'delta_y', 'delta_z',
+                    'min_x', 'max_x', 'min_y', 'max_y', 'min_z', 'max_z']:
+            if key in data and data[key] is not None:
+                config[key] = float(data[key])
+        
+        save_config()
+        print(f"Configuración de eventos actualizada.")
+        return jsonify({'success': True, 'message': 'Configuración de eventos guardada.', 'config': config})
+    except (ValueError, TypeError, KeyError) as e:
+        return jsonify({'success': False, 'message': f'Datos inválidos: {e}'}), 400
+
+@app.route('/auto_center', methods=['POST'])
+def auto_center():
+    global config
+    if not sensor_available:
+        return jsonify({'error': 'Sensor no disponible'}), 503
+
+    SAMPLES_FOR_CENTERING = 100
+    with sensor.buffer_lock:
+        if len(sensor.buffer) < SAMPLES_FOR_CENTERING:
+            return jsonify({'success': False, 'message': f'No hay suficientes muestras. Espere un momento.'}), 400
+        samples_to_avg = list(sensor.buffer)[-SAMPLES_FOR_CENTERING:]
+
+    config['center_x'] = sum(s['x'] - config['offsets']['x'] for s in samples_to_avg) / SAMPLES_FOR_CENTERING
+    config['center_y'] = sum(s['y'] - config['offsets']['y'] for s in samples_to_avg) / SAMPLES_FOR_CENTERING
+    config['center_z'] = sum(s['z'] - config['offsets']['z'] for s in samples_to_avg) / SAMPLES_FOR_CENTERING
+    
+    save_config()
+    print(f"Nuevos centros calculados: X:{config['center_x']:.3f}, Y:{config['center_y']:.3f}, Z:{config['center_z']:.3f}")
+    return jsonify({'success': True, 'message': 'Centro re-calculado.', 'config': config})
 
 @app.route('/config', methods=['POST'])
 def configure_sensor():
