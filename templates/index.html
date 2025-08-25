@@ -115,6 +115,55 @@
             text-align: center;
             font-weight: bold;
         }
+        .collapsible-section {
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            margin-bottom: 15px;
+            background-color: var(--panel-bg);
+        }
+        .collapsible-section > summary {
+            font-weight: bold;
+            padding: 10px 15px;
+            background-color: #f8f9fa;
+            cursor: pointer;
+            outline: none;
+            list-style: none; /* Remove default marker */
+            position: relative;
+        }
+        .collapsible-section[open] > summary {
+            border-bottom: 1px solid var(--border-color);
+        }
+        .collapsible-section > .content {
+            padding: 15px;
+        }
+        .collapsible-section > summary::-webkit-details-marker {
+            display: none; /* Hide for Chrome/Safari */
+        }
+        .collapsible-section > summary::before {
+            content: '►'; /* Collapsed state icon */
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%) rotate(0deg);
+            transition: transform 0.2s;
+            font-size: 0.8em;
+            color: var(--primary-color);
+        }
+        .collapsible-section[open] > summary::before {
+            transform: translateY(-50%) rotate(90deg); /* Expanded state icon */
+        }
+        .collapsible-section > summary {
+            padding-left: 35px; /* Space for the icon */
+        }
+        .offsets-info {
+            margin-top: 10px;
+            padding: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 0.85em;
+            color: #495057;
+        }
     </style>
 </head>
 <body>
@@ -122,61 +171,75 @@
 <div class="container">
     <aside class="panel controls">
         <h2>Controles</h2>
-        
-        <div class="control-group">
-            <label>Grabación</label>
-            <button id="recordBtn" class="btn btn-record">Iniciar Grabación</button>
-            <div id="status-indicator"></div>
-        </div>
 
-        <div class="control-group">
-            <button id="zeroBtn" class="btn" style="background-color: #ffc107; color: black;">Poner a Cero</button>
-        </div>
+        <details class="collapsible-section" open>
+            <summary>Calibración</summary>
+            <div class="content">
+                <div class="control-group">
+                    <button id="zeroBtn" class="btn" style="background-color: #ffc107; color: black;">Poner a Cero</button>
+                    <div id="offsets-display" class="offsets-info">
+                        <small>Offsets: X: 0.000, Y: 0.000, Z: 0.000</small>
+                    </div>
+                    <div class="control-group" style="margin-top: 15px;">
+                        <label for="offsetX" style="font-weight: normal; font-size: 0.9em;">Offset X Manual</label>
+                        <input type="number" id="offsetX" step="any" class="controls">
+                    </div>
+                    <div class="control-group">
+                        <label for="offsetY" style="font-weight: normal; font-size: 0.9em;">Offset Y Manual</label>
+                        <input type="number" id="offsetY" step="any" class="controls">
+                    </div>
+                    <div class="control-group">
+                        <label for="offsetZ" style="font-weight: normal; font-size: 0.9em;">Offset Z Manual</label>
+                        <input type="number" id="offsetZ" step="any" class="controls">
+                    </div>
+                    <button id="saveOffsetsBtn" class="btn btn-save" style="margin-top: 5px;">Guardar Offsets</button>
+                </div>
+            </div>
+        </details>
 
-        <h2>Configuración Avanzada</h2>
+        <details class="collapsible-section" open>
+            <summary>Registro de Datos</summary>
+            <div class="content">
+                <div class="control-group">
+                    <label for="filenameInput">Nombre base archivo</label>
+                    <input type="text" id="filenameInput" class="controls" value="datos_acelerometro">
+                </div>
+                <div class="control-group">
+                    <label for="stabilizationInput">Tiempo estabilización (s)</label>
+                    <input type="number" id="stabilizationInput" class="controls" value="0" min="0" step="0.1">
+                </div>
+                <div class="control-group">
+                    <label>Grabación</label>
+                    <button id="recordBtn" class="btn btn-record">Iniciar Grabación</button>
+                    <div id="status-indicator"></div>
+                </div>
+            </div>
+        </details>
 
-        <div class="control-group">
-            <label for="filenameInput">Nombre base archivo</label>
-            <input type="text" id="filenameInput" class="controls" value="datos_acelerometro">
-        </div>
-
-        <div class="control-group">
-            <label for="stabilizationInput">Tiempo estabilización (s)</label>
-            <input type="number" id="stabilizationInput" class="controls" value="0" min="0" step="0.1">
-        </div>
-
-        <div class="control-group">
-            <label for="rangeSelect">Rango (g)</label>
-            <select id="rangeSelect">
-                <option value="1">±2g</option>
-                <option value="2">±4g</option>
-                <option value="3">±8g</option>
-            </select>
-        </div>
-
-        <div class="control-group">
-            <label for="odrSelect">Frecuencia (ODR)</label>
-            <select id="odrSelect">
-                <option value="0">4000 Hz</option>
-                <option value="1">2000 Hz</option>
-                <option value="2">1000 Hz</option>
-                <option value="3">500 Hz</option>
-                <option value="4">250 Hz</option>
-                <option value="5">125 Hz</option>
-                <option value="6">62.5 Hz</option>
-                <option value="7">31.25 Hz</option>
-                <option value="8">15.625 Hz</option>
-                <option value="9">7.813 Hz</option>
-                <option value="10">3.906 Hz</option>
-            </select>
-        </div>
-
-        <div class="control-group">
-            <label for="fifoSamplesInput">Muestras FIFO (1-32)</label>
-            <input type="number" id="fifoSamplesInput" min="1" max="32" value="32">
-        </div>
-
-        <button id="saveConfigBtn" class="btn btn-save">Aplicar Configuración</button>
+        <details class="collapsible-section">
+            <summary>Configuración Sensor</summary>
+            <div class="content">
+                <div class="control-group">
+                    <label for="rangeSelect">Rango (g)</label>
+                    <select id="rangeSelect">
+                        <option value="1">±2g</option>
+                        <option value="2">±4g</option>
+                        <option value="3">±8g</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="odrSelect">Frecuencia (ODR)</label>
+                    <select id="odrSelect">
+                        <option value="0">4000 Hz</option><option value="1">2000 Hz</option><option value="2">1000 Hz</option><option value="3">500 Hz</option><option value="4">250 Hz</option><option value="5">125 Hz</option><option value="6">62.5 Hz</option><option value="7">31.25 Hz</option><option value="8">15.625 Hz</option><option value="9">7.813 Hz</option><option value="10">3.906 Hz</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="fifoSamplesInput">Muestras FIFO (1-32)</label>
+                    <input type="number" id="fifoSamplesInput" min="1" max="32" value="32">
+                </div>
+                <button id="saveConfigBtn" class="btn btn-save">Aplicar Configuración</button>
+            </div>
+        </details>
     </aside>
 
     <main class="panel">
@@ -222,6 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const recordBtn = document.getElementById('recordBtn');
     const saveConfigBtn = document.getElementById('saveConfigBtn');
     const zeroBtn = document.getElementById('zeroBtn');
+    const saveOffsetsBtn = document.getElementById('saveOffsetsBtn');
     const statusIndicator = document.getElementById('status-indicator');
 
     const fetchData = async (url, options) => {
@@ -261,7 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chart.update();
     }
 
-    function updateStatusUI(status) {
+    function updateUIFromStatus(status) {
         if (!status) return;
         if (status.recording) {
             recordBtn.textContent = 'Detener Grabación';
@@ -275,6 +339,23 @@ document.addEventListener('DOMContentLoaded', () => {
             statusIndicator.textContent = status.sensor_available ? 'En espera' : 'Sensor no detectado';
             statusIndicator.style.backgroundColor = 'var(--bg-color)';
             statusIndicator.style.color = 'var(--text-color)';
+        }
+
+        // Populate all config fields from status data
+        if (status.config) {
+            const cfg = status.config;
+            document.getElementById('rangeSelect').value = cfg.range;
+            document.getElementById('odrSelect').value = cfg.odr;
+            document.getElementById('fifoSamplesInput').value = cfg.fifo_samples;
+            document.getElementById('filenameInput').value = cfg.filename;
+            document.getElementById('stabilizationInput').value = cfg.stabilization;
+            
+            document.getElementById('offsetX').value = cfg.offsets.x;
+            document.getElementById('offsetY').value = cfg.offsets.y;
+            document.getElementById('offsetZ').value = cfg.offsets.z;
+
+            const offsetsDisplay = document.getElementById('offsets-display');
+            offsetsDisplay.innerHTML = `<small>Offsets: X: ${cfg.offsets.x.toFixed(3)}, Y: ${cfg.offsets.y.toFixed(3)}, Z: ${cfg.offsets.z.toFixed(3)}</small>`;
         }
     }
 
@@ -292,7 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 stabilization: stabilization
             })
         });
-        if (data) updateStatusUI({ ...data, sensor_available: true });
+        if (data) updateUIFromStatus(data);
     });
 
     zeroBtn.addEventListener('click', async () => {
@@ -305,11 +386,34 @@ document.addEventListener('DOMContentLoaded', () => {
         if (result) {
             statusIndicator.textContent = result.message;
             statusIndicator.style.backgroundColor = result.success ? 'var(--success-color)' : 'var(--danger-color)';
+            // Refresh the whole UI state after zeroing
+            fetchData('/status').then(updateUIFromStatus);
         } else {
             statusIndicator.textContent = 'Error al poner a cero.';
             statusIndicator.style.backgroundColor = 'var(--danger-color)';
         }
         statusIndicator.style.color = 'white';
+    });
+
+    saveOffsetsBtn.addEventListener('click', async () => {
+        const offsets = {
+            x: document.getElementById('offsetX').value,
+            y: document.getElementById('offsetY').value,
+            z: document.getElementById('offsetZ').value
+        };
+
+        statusIndicator.textContent = 'Guardando Offsets...';
+        const result = await fetchData('/offsets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(offsets)
+        });
+
+        if (result) {
+            statusIndicator.textContent = result.message;
+            statusIndicator.style.backgroundColor = result.success ? 'var(--success-color)' : 'var(--danger-color)';
+            fetchData('/status').then(updateUIFromStatus);
+        }
     });
 
     saveConfigBtn.addEventListener('click', async () => {
@@ -347,10 +451,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setInterval(async () => {
         const statusData = await fetchData('/status');
-        updateStatusUI(statusData);
+        updateUIFromStatus(statusData);
     }, 2000);
     
-    fetchData('/status').then(updateStatusUI);
+    fetchData('/status').then(updateUIFromStatus);
 });
 </script>
 </body>

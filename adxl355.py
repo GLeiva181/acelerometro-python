@@ -304,9 +304,6 @@ class ADXL355:
             r["y"] = norm_xyz["y"]
             r["z"] = norm_xyz["z"]
             self.buffer.append(r)
-        
-        # with self.buffer_lock:
-        #     self.buffer.extend(readings)
 
         return self.buffer
 

@@ -1,4 +1,14 @@
 {
+    "range": 1,
+    "odr": 0,
+    "fifo_samples": 32,
+    "offsets": {
+        "x": -0.008949921875,
+        "y": 0.011460117187499997,
+        "z": -2.07971078125
+    },
+    "filename": "datos_acelerometro",
+    "stabilization": 0.0,
     "nombre_archivo": "datos",
     "auto_record": true,
     "cooldown": "1",
