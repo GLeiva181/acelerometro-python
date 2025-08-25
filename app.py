@@ -19,6 +19,7 @@ config = {
     "range": 1,
     "odr": 0,
     "fifo_samples": 32,
+    "interrupt_map": 2, # Default: FIFO_FULL on INT1 (0b00000010)
     "offsets": {'x': 0.0, 'y': 0.0, 'z': 0.0},
     "filename": "datos_acelerometro",
     "stabilization": 0.0
@@ -57,6 +58,7 @@ try:
     sensor = ADXL355(measure_range=config['range'])
     sensor.set_odr(config['odr'])
     sensor.set_fifo_samples(config['fifo_samples'])
+    sensor.set_interrupt_map(config['interrupt_map'])
     irq = GPIOInterrupt(pin=22)
     sensor_available = True
     print("Sensor ADXL355 detectado. Usando interrupciones GPIO y configuración cargada.")
@@ -64,15 +66,11 @@ except Exception as e:
     print(f"No se pudo inicializar el sensor o GPIO: {e}. La aplicación se ejecutará sin datos reales.")
 
 def datos_entre_tiempos(buffer, t_inicio, t_fin):
-    """
-    Devuelve una lista con los datos del deque entre dos timestamps.
-    """
+    """Devuelve una lista con los datos del deque entre dos timestamps."""
     data_list = list(buffer)
     timestamps = [item["timestamp"] for item in data_list]
-
     idx_inicio = bisect.bisect_left(timestamps, t_inicio)
     idx_fin = bisect.bisect_right(timestamps, t_fin)
-
     return deque(data_list[idx_inicio:idx_fin])
 
 def grabar_archivo(t_inicio, t_fin, base_name="datos_acelerometro"):
@@ -116,8 +114,7 @@ def irq_handler():
     while True:
         # El timeout evita que se bloquee indefinidamente si algo va mal
         events = irq.wait_event(timeout=1.0) # Timeout en segundos
-        if events == [] or events:
-            # Leemos el FIFO cada vez que hay una interrupción
+        if events:
             sensor.read_fifo_with_meta()
 
 @app.route("/")
@@ -235,6 +232,13 @@ def configure_sensor():
         if 'fifo_samples' in new_config:
             config['fifo_samples'] = int(new_config['fifo_samples'])
             sensor.set_fifo_samples(config['fifo_samples'])
+        if 'interrupt_map' in new_config:
+            # Value comes as a binary string from frontend
+            interrupt_val = int(new_config['interrupt_map'], 2)
+            if not 0 <= interrupt_val <= 255:
+                raise ValueError("Interrupt map value must be an 8-bit integer.")
+            config['interrupt_map'] = interrupt_val
+            sensor.set_interrupt_map(config['interrupt_map'])
         
         with sensor.buffer_lock:
             sensor.buffer.clear()
@@ -247,11 +251,14 @@ def configure_sensor():
 @app.route('/status', methods=['GET'])
 def get_status():
     status = {'recording': recording, 'sensor_available': sensor_available}
+    # Add the config from file
     status.update({'config': config})
+    # Also add the current value from the sensor register if available
+    if sensor_available:
+        status['config']['interrupt_map_current'] = sensor.get_interrupt_map()
     return jsonify(status)
 
 if __name__ == "__main__":
     if sensor_available:
         threading.Thread(target=irq_handler, daemon=True).start()
-        print("sensor_available")
     app.run(host="0.0.0.0", port=5000, debug=False)

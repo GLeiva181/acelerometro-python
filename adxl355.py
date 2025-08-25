@@ -172,11 +172,15 @@ class ADXL355:
             raise ValueError("Number of FIFO samples must be between 1 and 32.")
         self.write_data(FIFO_SAMPLES, num_samples)
 
-    def set_interrupt(self):
+    def set_interrupt_map(self, value):
         """Sets interrupt on ADXL355 device.
         """
-        self.write_data(INTERRUPT_MAP, INT_MODE)
-    
+        self.write_data(INTERRUPT_MAP, value)
+
+    def get_interrupt_map(self):
+        """Reads the value from the INTERRUPT_MAP register."""
+        return self.read_data(INTERRUPT_MAP)
+
     def get_measure_range(self):
         range_value = self.read_data(RANGE) & 0x03
 

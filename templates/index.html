@@ -164,6 +164,13 @@
             font-size: 0.85em;
             color: #495057;
         }
+        .info-box {
+            margin-top: 5px;
+            padding: 5px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-size: 0.8em;
+        }
     </style>
 </head>
 <body>
@@ -237,7 +244,14 @@
                     <label for="fifoSamplesInput">Muestras FIFO (1-32)</label>
                     <input type="number" id="fifoSamplesInput" min="1" max="32" value="32">
                 </div>
-                <button id="saveConfigBtn" class="btn btn-save">Aplicar Configuración</button>
+                <div class="control-group">
+                    <label for="interruptMapInput">Mapa Interrupciones (binario)</label>
+                    <input type="text" id="interruptMapInput" class="controls" maxlength="8" pattern="[01]{8}" placeholder="Ej: 00000010">
+                    <div id="interrupt-map-current" class="info-box">
+                        <small>Actual en sensor: --</small>
+                    </div>
+                </div>
+                <button id="saveConfigBtn" class="btn btn-save" style="margin-top: 0;">Aplicar Configuración</button>
             </div>
         </details>
     </aside>
@@ -354,6 +368,16 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('offsetY').value = cfg.offsets.y;
             document.getElementById('offsetZ').value = cfg.offsets.z;
 
+            document.getElementById('interruptMapInput').value = (cfg.interrupt_map >>> 0).toString(2).padStart(8, '0');
+
+            const currentMapDisplay = document.getElementById('interrupt-map-current');
+            if (typeof cfg.interrupt_map_current !== 'undefined') {
+                const currentBin = (cfg.interrupt_map_current >>> 0).toString(2).padStart(8, '0');
+                currentMapDisplay.innerHTML = `<small>Actual en sensor: ${currentBin}</small>`;
+            } else {
+                currentMapDisplay.innerHTML = `<small>Actual en sensor: --</small>`;
+            }
+
             const offsetsDisplay = document.getElementById('offsets-display');
             offsetsDisplay.innerHTML = `<small>Offsets: X: ${cfg.offsets.x.toFixed(3)}, Y: ${cfg.offsets.y.toFixed(3)}, Z: ${cfg.offsets.z.toFixed(3)}</small>`;
         }
@@ -417,10 +441,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     saveConfigBtn.addEventListener('click', async () => {
+        const interruptMapValue = document.getElementById('interruptMapInput').value;
+        if (!/^[01]{8}$/.test(interruptMapValue)) {
+            statusIndicator.textContent = 'Error: Mapa de interrupciones debe ser un valor binario de 8 bits.';
+            statusIndicator.style.backgroundColor = 'var(--danger-color)';
+            statusIndicator.style.color = 'white';
+            return;
+        }
+
         const config = {
             range: document.getElementById('rangeSelect').value,
             odr: document.getElementById('odrSelect').value,
-            fifo_samples: document.getElementById('fifoSamplesInput').value
+            fifo_samples: document.getElementById('fifoSamplesInput').value,
+            interrupt_map: interruptMapValue
         };
         
         statusIndicator.textContent = 'Aplicando...';
