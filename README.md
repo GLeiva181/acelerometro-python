@@ -1,15 +1,15 @@
-| ADXL Pin description       | RP GPIO Pin      | Color    | Pin  |
-|-----------                 |------------------|------    |--    |            
-| Digital Power - VDD        | 01               | Blanco   | P1-1 | 
-| Digital Power - VDDIO      | 17               | Gris     | P1-3 |
-| Digital Ground             | 09               | Violeta  | P1-5 |
-| Interrupt 1                | 22               | Azul     | P1-2 |
-| Interrupt 2	               | Not Connected    |          | P1-4 |
-| Data Ready                 | Not Connected    |          | P1-6 |
-| Chip Select                | 24               | Verde    | P2-2 |
-| Serial Clock (SCLK)        | 23               | Amarillo | P2-4 |
-| Master Out Slave In (MOSI) | 19               | Naranja  | P2-6 |
-| Master In Slave Out (MISO) | 21               | Rojo     | P2-5 |
+| ADXL Pin description       | RP GPIO Pin Físico | Color    | Pin  |
+|-----------                 |------------------  |------    |--    |            
+| Digital Power - VDD        | 01                 | Blanco   | P1-1 | 
+| Digital Power - VDDIO      | 17                 | Gris     | P1-3 |
+| Digital Ground             | 09                 | Violeta  | P1-5 |
+| Interrupt 1                | 22                 | Azul     | P1-2 |
+| Interrupt 2	               | Not Connected      |          | P1-4 |
+| Data Ready                 | Not Connected      |          | P1-6 |
+| Chip Select                | 24                 | Verde    | P2-2 |
+| Serial Clock (SCLK)        | 23                 | Amarillo | P2-4 |
+| Master Out Slave In (MOSI) | 19                 | Naranja  | P2-6 |
+| Master In Slave Out (MISO) | 21                 | Rojo     | P2-5 |
 
 
 <p align="center">

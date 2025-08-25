@@ -19,10 +19,10 @@ class GPIOInterrupt:
 
     def wait_event(self, timeout=None):
         """Bloquea hasta que ocurra un evento en el pin"""
+        # gpiod timeout is in nanoseconds
         ready = self.gpio.wait_edge_events(timeout=timeout)
         if ready:
-            return self.gpio.read_edge_events(max_events=1)
+            # Lee todos los eventos que se hayan acumulado
+            return self.gpio.read_edge_events()
         else:
             return []
-
-    

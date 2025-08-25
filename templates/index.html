@@ -1,108 +1,372 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Acelerómetro</title>
+    <title>ADXL355 Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: sans-serif; }
-        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
-        .data-display { display: flex; justify-content: space-around; margin-bottom: 20px; }
-        .data-box { padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        :root {
+            --bg-color: #f4f7f6;
+            --panel-bg: #ffffff;
+            --text-color: #333;
+            --primary-color: #007bff;
+            --danger-color: #dc3545;
+            --success-color: #28a745;
+            --border-color: #dee2e6;
+            --shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+        @media (min-width: 992px) {
+            .container {
+                grid-template-columns: 300px 1fr;
+            }
+        }
+        .panel {
+            background-color: var(--panel-bg);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+        }
+        h2 {
+            margin-top: 0;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .live-data-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .data-box {
+            text-align: center;
+            padding: 10px;
+            border-radius: 5px;
+            background: var(--bg-color);
+        }
+        .data-box .label {
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        .data-box .value {
+            font-size: 1.2em;
+            font-weight: 500;
+        }
+        .chart-container {
+            position: relative;
+            height: 40vh;
+            min-height: 300px;
+        }
+        .controls .control-group {
+            margin-bottom: 20px;
+        }
+        .controls label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .controls select, .controls input {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            box-sizing: border-box;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            font-size: 1em;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .btn-record.recording { background-color: var(--danger-color); }
+        .btn-record.recording:hover { background-color: #c82333; }
+        .btn-record { background-color: var(--success-color); }
+        .btn-record:hover { background-color: #218838; }
+        .btn-save { background-color: var(--primary-color); margin-top: 10px; }
+        .btn-save:hover { background-color: #0069d9; }
+        #status-indicator {
+            padding: 10px;
+            margin-top: 15px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Visor de Acelerómetro</h1>
-        <div class="data-display">
-            <div class="data-box"><strong>X:</strong> <span id="x-value">...</span></div>
-            <div class="data-box"><strong>Y:</strong> <span id="y-value">...</span></div>
-            <div class="data-box"><strong>Z:</strong> <span id="z-value">...</span></div>
-            <div class="data-box"><strong>Temp:</strong> <span id="temp-value">...</span></div>
-        </div>
-        <div>
-            <canvas id="accelerometerChart"></canvas>
-        </div>
-        <div style="margin-top: 20px;">
-            <button id="record-button">▶ Iniciar Grabación</button>
-        </div>
-        <h2>Configuración</h2>
-        <div id="config-form">
-             <!-- Configuration options will go here -->
-        </div>
-    </div>
 
-    <script>
-        const xValue = document.getElementById('x-value');
-        const yValue = document.getElementById('y-value');
-        const zValue = document.getElementById('z-value');
-        const tempValue = document.getElementById('temp-value');
-        const recordButton = document.getElementById('record-button');
+<div class="container">
+    <aside class="panel controls">
+        <h2>Controles</h2>
+        
+        <div class="control-group">
+            <label>Grabación</label>
+            <button id="recordBtn" class="btn btn-record">Iniciar Grabación</button>
+            <div id="status-indicator"></div>
+        </div>
 
-        const ctx = document.getElementById('accelerometerChart').getContext('2d');
-        const chart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [
-                    { label: 'X', data: [], borderColor: 'red', fill: false },
-                    { label: 'Y', data: [], borderColor: 'green', fill: false },
-                    { label: 'Z', data: [], borderColor: 'blue', fill: false }
-                ]
+        <div class="control-group">
+            <button id="zeroBtn" class="btn" style="background-color: #ffc107; color: black;">Poner a Cero</button>
+        </div>
+
+        <h2>Configuración Avanzada</h2>
+
+        <div class="control-group">
+            <label for="filenameInput">Nombre base archivo</label>
+            <input type="text" id="filenameInput" class="controls" value="datos_acelerometro">
+        </div>
+
+        <div class="control-group">
+            <label for="stabilizationInput">Tiempo estabilización (s)</label>
+            <input type="number" id="stabilizationInput" class="controls" value="0" min="0" step="0.1">
+        </div>
+
+        <div class="control-group">
+            <label for="rangeSelect">Rango (g)</label>
+            <select id="rangeSelect">
+                <option value="1">±2g</option>
+                <option value="2">±4g</option>
+                <option value="3">±8g</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="odrSelect">Frecuencia (ODR)</label>
+            <select id="odrSelect">
+                <option value="0">4000 Hz</option>
+                <option value="1">2000 Hz</option>
+                <option value="2">1000 Hz</option>
+                <option value="3">500 Hz</option>
+                <option value="4">250 Hz</option>
+                <option value="5">125 Hz</option>
+                <option value="6">62.5 Hz</option>
+                <option value="7">31.25 Hz</option>
+                <option value="8">15.625 Hz</option>
+                <option value="9">7.813 Hz</option>
+                <option value="10">3.906 Hz</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="fifoSamplesInput">Muestras FIFO (1-32)</label>
+            <input type="number" id="fifoSamplesInput" min="1" max="32" value="32">
+        </div>
+
+        <button id="saveConfigBtn" class="btn btn-save">Aplicar Configuración</button>
+    </aside>
+
+    <main class="panel">
+        <h2>Datos en Tiempo Real</h2>
+        <div class="live-data-grid">
+            <div class="data-box"><div class="label">Eje X</div><div id="xVal" class="value">--</div></div>
+            <div class="data-box"><div class="label">Eje Y</div><div id="yVal" class="value">--</div></div>
+            <div class="data-box"><div class="label">Eje Z</div><div id="zVal" class="value">--</div></div>
+            <div class="data-box"><div class="label">Temp.</div><div id="tempVal" class="value">--</div></div>
+        </div>
+        <div class="chart-container">
+            <canvas id="xyzChart"></canvas>
+        </div>
+    </main>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const MAX_CHART_POINTS = 100;
+
+    const ctx = document.getElementById("xyzChart").getContext("2d");
+    const chart = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: [],
+            datasets: [
+                { label: "X", data: [], borderColor: "red", fill: false, pointRadius: 0, borderWidth: 2 },
+                { label: "Y", data: [], borderColor: "blue", fill: false, pointRadius: 0, borderWidth: 2 },
+                { label: "Z", data: [], borderColor: "green", fill: false, pointRadius: 0, borderWidth: 2 }
+            ]
+        },
+        options: {
+            animation: false,
+            maintainAspectRatio: false,
+            scales: {
+                y: { suggestedMin: -2.5, suggestedMax: 2.5 },
+                x: { ticks: { display: false } }
             },
-            options: {
-                animation: false,
-                scales: {
-                    x: {
-                        type: 'linear',
-                        position: 'bottom'
-                    }
-                }
-            }
-        });
-
-        let recording = false;
-
-        async function fetchData() {
-            const response = await fetch('/data');
-            const data = await response.json();
-
-            xValue.textContent = data.x.toFixed(4) + ' g';
-            yValue.textContent = data.y.toFixed(4) + ' g';
-            zValue.textContent = data.z.toFixed(4) + ' g';
-            tempValue.textContent = data.temp.toFixed(1) + ' °C';
-
-            const time = new Date(data.timestamp * 1000);
-            const label = time.getHours() + ':' + time.getMinutes() + ':' + time.getSeconds() + '.' + time.getMilliseconds();
-
-            chart.data.labels.push(label);
-            chart.data.datasets[0].data.push(data.x);
-            chart.data.datasets[1].data.push(data.y);
-            chart.data.datasets[2].data.push(data.z);
-
-            // Limit the number of data points
-            if (chart.data.labels.length > 100) {
-                chart.data.labels.shift();
-                chart.data.datasets.forEach(dataset => dataset.data.shift());
-            }
-
-            chart.update();
+            plugins: { legend: { position: 'top' } }
         }
+    });
 
-        recordButton.addEventListener('click', async () => {
-            recording = !recording;
-            const response = await fetch('/record', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ recording: recording })
-            });
-            const data = await response.json();
-            recordButton.textContent = data.recording ? '⏹ Detener Grabación' : '▶ Iniciar Grabación';
-            recordButton.style.backgroundColor = data.recording ? 'red' : 'green';
+    const recordBtn = document.getElementById('recordBtn');
+    const saveConfigBtn = document.getElementById('saveConfigBtn');
+    const zeroBtn = document.getElementById('zeroBtn');
+    const statusIndicator = document.getElementById('status-indicator');
+
+    const fetchData = async (url, options) => {
+        try {
+            const response = await fetch(url, options);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return await response.json();
+        } catch (error) {
+            console.error(`Fetch error for ${url}:`, error);
+            statusIndicator.textContent = 'Error de conexión';
+            statusIndicator.style.backgroundColor = 'var(--danger-color)';
+            statusIndicator.style.color = 'white';
+            return null;
+        }
+    };
+
+    function updateLiveValues(sensor) {
+        if (!sensor) return;
+        if (sensor.error) { console.warn(sensor.error); }
+
+        document.getElementById("xVal").textContent = sensor.x.toFixed(4) + ' g';
+        document.getElementById("yVal").textContent = sensor.y.toFixed(4) + ' g';
+        document.getElementById("zVal").textContent = sensor.z.toFixed(4) + ' g';
+        document.getElementById("tempVal").textContent = sensor.temp.toFixed(2) + ' °C';
+
+        const time = new Date(sensor.timestamp * 1000).toLocaleTimeString();
+        chart.data.labels.push(time);
+        chart.data.datasets.forEach((ds, i) => {
+            const axis = ds.label.toLowerCase();
+            ds.data.push(sensor[axis]);
         });
 
-        setInterval(fetchData, 200); // Update every 200ms
-    </script>
+        if (chart.data.labels.length > MAX_CHART_POINTS) {
+            chart.data.labels.shift();
+            chart.data.datasets.forEach(ds => ds.data.shift());
+        }
+        chart.update();
+    }
+
+    function updateStatusUI(status) {
+        if (!status) return;
+        if (status.recording) {
+            recordBtn.textContent = 'Detener Grabación';
+            recordBtn.classList.add('recording');
+            statusIndicator.textContent = 'Grabando...';
+            statusIndicator.style.backgroundColor = 'var(--danger-color)';
+            statusIndicator.style.color = 'white';
+        } else {
+            recordBtn.textContent = 'Iniciar Grabación';
+            recordBtn.classList.remove('recording');
+            statusIndicator.textContent = status.sensor_available ? 'En espera' : 'Sensor no detectado';
+            statusIndicator.style.backgroundColor = 'var(--bg-color)';
+            statusIndicator.style.color = 'var(--text-color)';
+        }
+    }
+
+    recordBtn.addEventListener('click', async () => {
+        const isRecording = recordBtn.classList.contains('recording');
+        const filename = document.getElementById('filenameInput').value;
+        const stabilization = document.getElementById('stabilizationInput').value;
+
+        const data = await fetchData('/record', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                recording: !isRecording,
+                filename: filename,
+                stabilization: stabilization
+            })
+        });
+        if (data) updateStatusUI({ ...data, sensor_available: true });
+    });
+
+    zeroBtn.addEventListener('click', async () => {
+        statusIndicator.textContent = 'Poniendo a cero...';
+        statusIndicator.style.backgroundColor = 'var(--primary-color)';
+        statusIndicator.style.color = 'white';
+
+        const result = await fetchData('/zero', { method: 'POST' });
+        
+        if (result) {
+            statusIndicator.textContent = result.message;
+            statusIndicator.style.backgroundColor = result.success ? 'var(--success-color)' : 'var(--danger-color)';
+        } else {
+            statusIndicator.textContent = 'Error al poner a cero.';
+            statusIndicator.style.backgroundColor = 'var(--danger-color)';
+        }
+        statusIndicator.style.color = 'white';
+    });
+
+    saveConfigBtn.addEventListener('click', async () => {
+        const config = {
+            range: document.getElementById('rangeSelect').value,
+            odr: document.getElementById('odrSelect').value,
+            fifo_samples: document.getElementById('fifoSamplesInput').value
+        };
+        
+        statusIndicator.textContent = 'Aplicando...';
+        const result = await fetchData('/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+
+        if (result && result.success) {
+            statusIndicator.textContent = 'Configuración guardada';
+            statusIndicator.style.backgroundColor = 'var(--success-color)';
+            statusIndicator.style.color = 'white';
+            chart.data.labels = [];
+            chart.data.datasets.forEach(ds => ds.data = []);
+            chart.update();
+        } else {
+            statusIndicator.textContent = `Error: ${result ? result.message : 'Fallo al aplicar'}`;
+            statusIndicator.style.backgroundColor = 'var(--danger-color)';
+            statusIndicator.style.color = 'white';
+        }
+    });
+
+    setInterval(async () => {
+        const sensorData = await fetchData('/data');
+        updateLiveValues(sensorData);
+    }, 300);
+
+    setInterval(async () => {
+        const statusData = await fetchData('/status');
+        updateStatusUI(statusData);
+    }, 2000);
+    
+    fetchData('/status').then(updateStatusUI);
+});
+</script>
+</body>
+</html>
+            }
+            chart.update();
+
+            // Actualizamos valores en el panel
+            document.getElementById("xVal").textContent = sensor.x.toFixed(3);
+            document.getElementById("yVal").textContent = sensor.y.toFixed(3);
+            document.getElementById("zVal").textContent = sensor.z.toFixed(3);
+            document.getElementById("tempVal").textContent = sensor.temp.toFixed(2);
+        });
+}
+
+setInterval(updateData, 300); // actualizar cada 0.3s
+</script>
 </body>
 </html>

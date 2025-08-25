@@ -7,8 +7,10 @@ accelerometer chip for Raspberry Pi boards
    https://wiki.analog.com/resources/eval/user-guides/eval-adicup360/hardware/adxl355
 
 """
-
 import spidev
+from collections import deque
+import time
+import threading
 
 # ADXL345 constants
 
@@ -36,7 +38,7 @@ TEMP02 = 0x06
 TEMP01 = 0x07
 FIFO_DATA = 0x11
 FIFO_SAMPLES = 0x29
-FIFA_ENTRY = 0x05
+FIFO_ENTRIES = 0x05
 INTERRUPT_MAP = 0x2A
 
 # Data Range
@@ -50,8 +52,13 @@ WRITE_BIT = 0x00
 DUMMY_BYTE = 0xAA
 MEASURE_MODE = 0x04 # Enable accelerometer and temperature
 #CONFIG INTERRUPTIONS
-INT_MODE = 0x02 # FIFO_FULL enable INT1
+INT_MODE = 0x02 # FIFO_FULL enable on INT1 pin
 FIFO_SAMPLES_VALUE = 32
+
+# ==== Configuración ====
+HISTORICO_SEGUNDOS = 60 * 2
+FRECUENCIA_MAX_HZ = 4000
+MAX_MUESTRAS = HISTORICO_SEGUNDOS * FRECUENCIA_MAX_HZ  # 1 minuto a 4 kHz
 
 class ADXL355:
     """
@@ -61,6 +68,7 @@ class ADXL355:
     from the accelerometers
     """
     measure_range=-1
+
     def __init__(self, measure_range=RANGE_2G):
         # SPI init
         self.spi = spidev.SpiDev()
@@ -76,9 +84,14 @@ class ADXL355:
         # Device init
         self.set_measure_range(measure_range)
         self.set_odr(0x00) # Set ODR to 4000 Hz
+        self.set_fifo_samples(FIFO_SAMPLES_VALUE)
         self.set_interrupt()
         self.enable_measure_mode()
         self.get_measure_range()
+
+        # Deque para histórico
+        self.buffer = deque(maxlen=MAX_MUESTRAS)
+        self.buffer_lock = threading.Lock()
 
     def set_odr(self, odr_value):
         """Sets the Output Data Rate (ODR) on ADXL355 device.
@@ -148,6 +161,17 @@ class ADXL355:
         """
         self.write_data(RANGE, measure_range)
     
+    def set_fifo_samples(self, num_samples):
+        """Sets the number of samples for the FIFO buffer.
+        The FIFO_FULL interrupt will be triggered when this number of samples is reached.
+
+        Args:
+            num_samples (int): Number of samples (1 to 32).
+        """
+        if not 1 <= num_samples <= 32:
+            raise ValueError("Number of FIFO samples must be between 1 and 32.")
+        self.write_data(FIFO_SAMPLES, num_samples)
+
     def set_interrupt(self):
         """Sets interrupt on ADXL355 device.
         """
@@ -239,38 +263,53 @@ class ADXL355:
         return temp_c
     
     def fifo_entries(self):
-        return self.spi_read(FIFA_ENTRY)[0] & 0x3F
+        return self.spi_read(FIFO_ENTRIES)[0] & 0x7F # Bits 0 to 6
 
-    def read_fifo(self, samples):
-        fifo_entry=self.fifo_entries()
-        num_samples = fifo_entry // 9
-        if fifo_entry >= samples:
-            fifo_data = self.spi_read(FIFO_DATA, samples * 9)
+    def read_fifo(self):
+        fifo_entry = self.fifo_entries()//3
+        if fifo_entry == 0:
+            return []
 
-            sum_x, sum_y, sum_z = 0, 0, 0
-            for i in range(samples):
-                start = i * 9
-                x_bytes = fifo_data[start : start + 3]      # bytes 0,1,2 → X
-                y_bytes = fifo_data[start + 3 : start + 6]  # bytes 3,4,5 → Y
-                z_bytes = fifo_data[start + 6 : start + 9]  # bytes 6,7,8 → Z
+        fifo_data = self.spi_read(FIFO_DATA, fifo_entry * 9)
 
-                # convertir de 3 bytes a int20
-                x = self.bytes_to_int20(x_bytes)
-                y = self.bytes_to_int20(y_bytes)
-                z = self.bytes_to_int20(z_bytes)
+        readings = []
+        for i in range(fifo_entry):
+            start = i * 9
+            x_bytes = fifo_data[start : start + 3]      # bytes 0,1,2 → X
+            y_bytes = fifo_data[start + 3 : start + 6]  # bytes 3,4,5 → Y
+            z_bytes = fifo_data[start + 6 : start + 9]  # bytes 6,7,8 → Z
 
-                sum_x += x
-                sum_y += y
-                sum_z += z
+            # convertir de 3 bytes a int20
+            x = self.bytes_to_int20(x_bytes)
+            y = self.bytes_to_int20(y_bytes)
+            z = self.bytes_to_int20(z_bytes)
 
-            # Promedio de cada eje
-            avg_x = sum_x / samples
-            avg_y = sum_y / samples
-            avg_z = sum_z / samples
-            return self.get_axes_norm({'x': avg_x, 'y': avg_y, 'z': avg_z})
-        else:
-            return None
-    
+            readings.append({"x": x, "y": y, "z": z})
+        return readings
+
+    def read_fifo_with_meta(self):
+        """Lee FIFO, agrega timestamp y temperatura, guarda en buffer"""
+        readings = self.read_fifo()
+        if readings is None:
+            return []
+
+        temp = self.get_temperature()
+        timestamp = time.time()  # unix epoch (segundos flotante)
+
+        for r in readings:
+            r["temp"] = temp
+            r["timestamp"] = timestamp
+            norm_xyz=self.get_axes_norm(r)
+            r["x"] = norm_xyz["x"]
+            r["y"] = norm_xyz["y"]
+            r["z"] = norm_xyz["z"]
+            self.buffer.append(r)
+        
+        # with self.buffer_lock:
+        #     self.buffer.extend(readings)
+
+        return self.buffer
+
     def read_fifo_full(self):
         
         fifo_data = self.spi_read(FIFO_DATA, FIFO_SAMPLES_VALUE * 9)

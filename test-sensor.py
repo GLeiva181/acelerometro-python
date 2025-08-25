@@ -19,7 +19,7 @@ except Exception as e:
 try:
     while True:
         # print(adxl355.fifo_entries())
-        data = adxl355.read_fifo(30)
+        data = adxl355.get_temperature()
         if data != None:
             print(data, time.time())
 
