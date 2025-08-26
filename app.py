@@ -132,15 +132,30 @@ def check_for_event(data):
 
     mode = config.get('umbral_mode', 'Absoluto')
     
+    min_x =float(config.get('min_x', 0))
+    min_y =float(config.get('min_y', 0))
+    min_z =float(config.get('min_z', 0))
+    max_x =float(config.get('max_x', 0))
+    max_y =float(config.get('max_y', 0))
+    max_z =float(config.get('max_z', 0))
+    
+    center_x = float(config.get('center_x', 0))
+    center_y = float(config.get('center_y', 0))
+    center_z = float(config.get('center_z', 0))
+    
+    delta_x = float(config.get('delta_x', 0.1))
+    delta_y = float(config.get('delta_y', 0.1))
+    delta_z = float(config.get('delta_z', 0.1))
+
     if mode == 'Absoluto':
-        if not (config.get('min_x', 0) <= x <= config.get('max_x', 0) and
-                config.get('min_y', 0) <= y <= config.get('max_y', 0) and
-                config.get('min_z', 0) <= z <= config.get('max_z', 0)):
+        if not (min_x <= x <= max_x and
+                min_y <= y <= max_y and
+                min_z <= z <= max_z):
             return True
     elif mode == 'Relativo':
-        if (abs(x - config.get('center_x', 0)) > config.get('delta_x', 0.1) or
-            abs(y - config.get('center_y', 0)) > config.get('delta_y', 0.1) or
-            abs(z - config.get('center_z', 1.0)) > config.get('delta_z', 0.1)):
+        if (abs(x - center_x) > delta_x or
+            abs(y - center_y) > delta_y or
+            abs(z - center_z) > delta_z):
             return True
             
     return False
@@ -179,7 +194,7 @@ def irq_handler():
                 sensor.read_fifo_with_meta()
                 new_data = list(sensor.buffer)[start_idx:]
 
-            if not recording and config.get('auto_record', False) and (time.time() - last_event_time) > config.get('cooldown', 5.0):
+            if not recording and config.get('auto_record', False) and (time.time() - last_event_time) > float(config.get('cooldown', 5.0)):
                 for d in new_data:
                     if check_for_event(d):
                         print(f"¡Evento detectado! Iniciando grabación automática.")
