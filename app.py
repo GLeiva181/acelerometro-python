@@ -64,6 +64,7 @@ irq = None
 sensor_available = False
 recording = False
 recording_start_time = 0.0
+simulation_enabled = False
 last_event_time = 0.0
 auto_recording_active = False
 
@@ -217,10 +218,16 @@ def get_data():
         latest_data['y'] -= config['offsets']['y']
         latest_data['z'] -= config['offsets']['z']
         return jsonify(latest_data)
-    else:
-        # Devuelve datos de ejemplo si el sensor no está disponible
+    elif not sensor_available and simulation_enabled:
+        # Devuelve datos de ejemplo si la simulación está activada
         return jsonify({
             'x': 0.1 * (time.time() % 10), 'y': 0.2 * (time.time() % 5), 'z': 1.0, 'temp': 25.0, 
+            'timestamp': time.time()
+        })
+    else:
+        # Sensor no disponible y simulación desactivada
+        return jsonify({
+            'x': 0, 'y': 0, 'z': 0, 'temp': 0,
             'timestamp': time.time(), 'error': 'Sensor no disponible'
         })
 
@@ -329,6 +336,17 @@ def event_config():
     except (ValueError, TypeError, KeyError) as e:
         return jsonify({'success': False, 'message': f'Datos inválidos: {e}'}), 400
 
+@app.route('/toggle_simulation', methods=['POST'])
+def toggle_simulation():
+    global simulation_enabled
+    if not sensor_available:
+        simulation_enabled = not simulation_enabled
+        message = 'Simulación activada.' if simulation_enabled else 'Simulación desactivada.'
+        print(message)
+        return jsonify({'success': True, 'simulation_enabled': simulation_enabled, 'message': message})
+    else:
+        return jsonify({'success': False, 'message': 'El sensor está conectado, no se puede simular.'}), 400
+
 @app.route('/files', methods=['GET'])
 def list_files():
     data_dir = "data"
@@ -397,7 +415,11 @@ def configure_sensor():
 
 @app.route('/status', methods=['GET'])
 def get_status():
-    status = {'recording': recording, 'sensor_available': sensor_available}
+    status = {
+        'recording': recording,
+        'sensor_available': sensor_available,
+        'simulation_enabled': simulation_enabled
+    }
     status.update({'config': config})
     return jsonify(status)
 

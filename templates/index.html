@@ -239,6 +239,7 @@
 <div id="top-banner">
     <div class="banner-section">
         <span id="banner-sensor-status">--</span>
+        <button id="toggleSimBtn" class="btn" style="display: none; width: auto; padding: 5px 10px; font-size: 0.9em; background-color: #f39c12;">Activar Simulación</button>
         <span id="banner-recording-status">GRABANDO</span>
     </div>
     <div class="banner-section banner-data">
@@ -480,6 +481,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadFileBtn = document.getElementById('loadFileBtn');
     const logScaleCheck = document.getElementById('logScaleCheck');
     const statusIndicator = document.getElementById('status-indicator');
+    const toggleSimBtn = document.getElementById('toggleSimBtn');
 
     const fetchData = async (url, options) => {
         try {
@@ -498,8 +500,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateLiveValues(sensor) {
         if (!sensor) return;
         if (viewingMode === 'file') return;
-        if (sensor.error) { console.warn(sensor.error); }
-
+        
+        if (sensor.error) {
+            console.warn(sensor.error);
+            // Muestra '--' cuando hay un error (sin sensor, sin simulación)
+            document.getElementById("banner-xVal").textContent = '--';
+            document.getElementById("banner-yVal").textContent = '--';
+            document.getElementById("banner-zVal").textContent = '--';
+            document.getElementById("banner-tempVal").textContent = '--';
+            return; // No actualiza el gráfico
+        }
+        
         document.getElementById("banner-xVal").textContent = sensor.x.toFixed(4) + ' g';
         document.getElementById("banner-yVal").textContent = sensor.y.toFixed(4) + ' g';
         document.getElementById("banner-zVal").textContent = sensor.z.toFixed(4) + ' g';
@@ -524,13 +535,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const bannerSensorStatus = document.getElementById('banner-sensor-status');
         const bannerRecordingStatus = document.getElementById('banner-recording-status');
+        const toggleSimBtn = document.getElementById('toggleSimBtn');
 
         if (status.sensor_available) {
             bannerSensorStatus.textContent = 'Sensor Conectado';
             bannerSensorStatus.className = 'connected';
+            toggleSimBtn.style.display = 'none';
         } else {
             bannerSensorStatus.textContent = 'Sensor Desconectado';
             bannerSensorStatus.className = 'disconnected';
+            toggleSimBtn.style.display = 'inline-block';
+
+            if (status.simulation_enabled) {
+                toggleSimBtn.textContent = 'Desactivar Simulación';
+                toggleSimBtn.style.backgroundColor = '#16a085'; // Color "activo"
+            } else {
+                toggleSimBtn.textContent = 'Activar Simulación';
+                toggleSimBtn.style.backgroundColor = '#f39c12'; // Color "acción"
+            }
         }
 
         if (status.recording) {
@@ -636,6 +658,24 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 pauseChartBtn.textContent = 'Pausar Gráfico';
                 pauseChartBtn.style.backgroundColor = '#6c757d';
+            }
+        }
+    });
+
+    toggleSimBtn.addEventListener('click', async () => {
+        const result = await fetchData('/toggle_simulation', { method: 'POST' });
+        if (result && result.success) {
+            // Forzar una actualización de la UI para reflejar el cambio
+            fetchData('/status').then(updateUIFromStatus);
+            
+            // Si la simulación se acaba de desactivar, limpiar el gráfico y los valores
+            if (!result.simulation_enabled) {
+                chart.data.datasets.forEach(ds => ds.data = []);
+                chart.update();
+                document.getElementById("banner-xVal").textContent = '--';
+                document.getElementById("banner-yVal").textContent = '--';
+                document.getElementById("banner-zVal").textContent = '--';
+                document.getElementById("banner-tempVal").textContent = '--';
             }
         }
     });
