@@ -394,12 +394,16 @@
     </aside>
 
     <main class="panel">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--primary-color); padding-bottom: 10px; margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--primary-color); padding-bottom: 10px; margin-bottom: 10px;">
             <h2 style="margin: 0; border: none; padding: 0;">Datos en Tiempo Real</h2>
             <button id="pauseChartBtn" class="btn" style="width: auto; padding: 5px 10px; background-color: #6c757d; font-size: 0.9em;">Pausar Gráfico</button>
         </div>
-        <div style="text-align: right; margin-bottom: 5px;">
-            <label style="cursor: pointer; font-size: 0.9em;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 20px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <label for="chartWindowInput" style="margin-bottom: 0; font-weight: normal; font-size: 0.9em; white-space: nowrap;">Ventana (s):</label>
+                <input type="number" id="chartWindowInput" value="30" min="1" step="1" class="controls" style="width: 80px; padding: 5px; height: auto;">
+            </div>
+            <label style="cursor: pointer; font-size: 0.9em; flex-shrink: 0;">
                 <input type="checkbox" id="logScaleCheck" style="vertical-align: middle;">
                 Eje de tiempo logarítmico
             </label>
@@ -412,7 +416,6 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    const MAX_CHART_POINTS = 100;
     let isChartPaused = false;
     let viewingMode = 'live'; // 'live' or 'file'
 
@@ -482,6 +485,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const logScaleCheck = document.getElementById('logScaleCheck');
     const statusIndicator = document.getElementById('status-indicator');
     const toggleSimBtn = document.getElementById('toggleSimBtn');
+    const chartWindowInput = document.getElementById('chartWindowInput');
 
     const fetchData = async (url, options) => {
         try {
@@ -523,10 +527,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const axis = ds.label.toLowerCase();
             ds.data.push({ x: timestamp, y: sensor[axis] });
         });
- 
-        if (chart.data.datasets[0].data.length > MAX_CHART_POINTS) {
-            chart.data.datasets.forEach(ds => ds.data.shift());
-        }
+
+        const timeWindowSeconds = parseFloat(chartWindowInput.value) || 30;
+        const oldestTime = timestamp - (timeWindowSeconds * 1000);
+
+        chart.data.datasets.forEach(ds => {
+            let i = 0;
+            while (i < ds.data.length && ds.data[i].x < oldestTime) {
+                i++;
+            }
+            if (i > 0) {
+                ds.data.splice(0, i);
+            }
+        });
+
         chart.update();
     }
 
