@@ -19,6 +19,8 @@ CONFIG_FILE = "config.json"
 config = {
     "range": 1,
     "odr": 0,
+    "hpf_corner": 0,
+    "standby": False,
     "fifo_samples": 32,
     "offsets": {'x': 0.0, 'y': 0.0, 'z': 0.0},
     "filename": "datos_acelerometro",
@@ -72,6 +74,8 @@ try:
     sensor = ADXL355(measure_range=config['range'])
     sensor.set_odr(config['odr'])
     sensor.set_fifo_samples(config['fifo_samples'])
+    sensor.set_hpf_corner(config['hpf_corner'])
+    sensor.set_standby(config['standby'])
     irq = GPIOInterrupt(pin=22)
     sensor_available = True
     print("Sensor ADXL355 detectado. Usando interrupciones GPIO y configuración cargada.")
@@ -404,6 +408,12 @@ def configure_sensor():
         if 'fifo_samples' in new_config:
             config['fifo_samples'] = int(new_config['fifo_samples'])
             sensor.set_fifo_samples(config['fifo_samples'])
+        if 'hpf_corner' in new_config:
+            config['hpf_corner'] = int(new_config['hpf_corner'])
+            sensor.set_hpf_corner(config['hpf_corner'])
+        if 'standby' in new_config:
+            config['standby'] = bool(new_config['standby'])
+            sensor.set_standby(config['standby'])
         
         with sensor.buffer_lock:
             sensor.buffer.clear()

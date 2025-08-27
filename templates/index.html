@@ -385,8 +385,27 @@
                     </select>
                 </div>
                 <div class="control-group">
+                    <label for="hpfSelect">Filtro Pasa-Altos (HPF)</label>
+                    <select id="hpfSelect">
+                        <option value="0">Desactivado</option>
+                        <option value="1">ODR / 2.47</option>
+                        <option value="2">ODR / 4.94</option>
+                        <option value="3">ODR / 9.88</option>
+                        <option value="4">ODR / 19.76</option>
+                        <option value="5">ODR / 39.52</option>
+                        <option value="6">ODR / 79.04</option>
+                        <option value="7">ODR / 158.08</option>
+                    </select>
+                </div>
+                <div class="control-group">
                     <label for="fifoSamplesInput">Muestras FIFO (1-32)</label>
                     <input type="number" id="fifoSamplesInput" min="1" max="32" value="32">
+                </div>
+                <div class="control-group">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="standbyCheck" style="width: auto; margin-right: 10px; transform: scale(1.2);">
+                        Modo Standby (ahorro de energía)
+                    </label>
                 </div>
                 <button id="saveConfigBtn" class="btn btn-save">Aplicar Configuración</button>
             </div>
@@ -589,6 +608,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const cfg = status.config;
             setControlValue('rangeSelect', cfg.range);
             setControlValue('odrSelect', cfg.odr);
+            setControlValue('hpfSelect', cfg.hpf_corner);
+            setControlValue('standbyCheck', cfg.standby, 'checked');
             setControlValue('fifoSamplesInput', cfg.fifo_samples);
             setControlValue('filenameInput', cfg.filename);
             setControlValue('stabilizationInput', cfg.stabilization);
@@ -780,7 +801,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const config = {
             range: document.getElementById('rangeSelect').value,
             odr: document.getElementById('odrSelect').value,
-            fifo_samples: document.getElementById('fifoSamplesInput').value
+            fifo_samples: document.getElementById('fifoSamplesInput').value,
+            hpf_corner: document.getElementById('hpfSelect').value,
+            standby: document.getElementById('standbyCheck').checked
         };
         
         statusIndicator.textContent = 'Aplicando...';
