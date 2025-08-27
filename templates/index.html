@@ -294,6 +294,19 @@
             </div>
         </details>
 
+        <details class="collapsible-section">
+            <summary>Visualizar Archivo</summary>
+            <div class="content">
+                <div class="control-group">
+                    <label for="fileSelect">Seleccionar archivo guardado</label>
+                    <select id="fileSelect" class="controls">
+                        <option value="">-- Cargando archivos --</option>
+                    </select>
+                </div>
+                <button id="loadFileBtn" class="btn" style="background-color: #17a2b8;">Cargar y Visualizar</button>
+            </div>
+        </details>
+
         <details class="collapsible-section" open>
             <summary>Configuración Sensor</summary>
             <div class="content">
@@ -325,6 +338,12 @@
             <h2 style="margin: 0; border: none; padding: 0;">Datos en Tiempo Real</h2>
             <button id="pauseChartBtn" class="btn" style="width: auto; padding: 5px 10px; background-color: #6c757d; font-size: 0.9em;">Pausar Gráfico</button>
         </div>
+        <div style="text-align: right; margin-bottom: 5px;">
+            <label style="cursor: pointer; font-size: 0.9em;">
+                <input type="checkbox" id="logScaleCheck" style="vertical-align: middle;">
+                Eje de tiempo logarítmico
+            </label>
+        </div>
         <div class="live-data-grid">
             <div class="data-box"><div class="label">Eje X</div><div id="xVal" class="value">--</div></div>
             <div class="data-box"><div class="label">Eje Y</div><div id="yVal" class="value">--</div></div>
@@ -341,6 +360,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const MAX_CHART_POINTS = 100;
     let isChartPaused = false;
+    let viewingMode = 'live'; // 'live' or 'file'
 
     /**
      * Helper function to safely update form controls.
@@ -350,6 +370,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const element = document.getElementById(elementId);
         if (element && document.activeElement !== element) {
             element[property] = value;
+        }
+    };
+
+    const timeScaleOptions = {
+        type: 'time',
+        time: {
+            unit: 'second',
+            displayFormats: {
+                second: 'HH:mm:ss'
+            },
+            tooltipFormat: 'HH:mm:ss.SSS'
+        },
+        title: {
+            display: true,
+            text: 'Tiempo'
         }
     };
 
@@ -376,20 +411,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         text: 'Aceleración (g)'
                     }
                 },
-                x: { 
-                    type: 'time',
-                    time: {
-                        unit: 'second',
-                        displayFormats: {
-                            second: 'HH:mm:ss'
-                        },
-                        tooltipFormat: 'HH:mm:ss.SSS'
-                    },
-                    title: {
-                        display: true,
-                        text: 'Tiempo'
-                    }
-                }
+                x: { ...timeScaleOptions }
             },
             plugins: { legend: { position: 'top' } }
         }
@@ -401,6 +423,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveOffsetsBtn = document.getElementById('saveOffsetsBtn');
     const saveEventConfigBtn = document.getElementById('saveEventConfigBtn');
     const pauseChartBtn = document.getElementById('pauseChartBtn');
+    const fileSelect = document.getElementById('fileSelect');
+    const loadFileBtn = document.getElementById('loadFileBtn');
+    const logScaleCheck = document.getElementById('logScaleCheck');
     const statusIndicator = document.getElementById('status-indicator');
 
     const fetchData = async (url, options) => {
@@ -419,6 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateLiveValues(sensor) {
         if (!sensor) return;
+        if (viewingMode === 'file') return;
         if (sensor.error) { console.warn(sensor.error); }
 
         document.getElementById("xVal").textContent = sensor.x.toFixed(4) + ' g';
@@ -526,15 +552,31 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     pauseChartBtn.addEventListener('click', () => {
-        isChartPaused = !isChartPaused;
-        if (isChartPaused) {
-            pauseChartBtn.textContent = 'Reanudar Gráfico';
-            pauseChartBtn.style.backgroundColor = 'var(--primary-color)';
-        } else {
+        if (viewingMode === 'file') {
+            // Switch back to live mode
+            viewingMode = 'live';
+            isChartPaused = false;
             pauseChartBtn.textContent = 'Pausar Gráfico';
             pauseChartBtn.style.backgroundColor = '#6c757d';
+            // Clear file data from chart and let live data repopulate
+            chart.data.datasets.forEach(ds => ds.data = []);
+            chart.update();
+        } else {
+            // Original pause/resume logic for live mode
+            isChartPaused = !isChartPaused;
+            if (isChartPaused) {
+                pauseChartBtn.textContent = 'Reanudar Gráfico';
+                pauseChartBtn.style.backgroundColor = 'var(--primary-color)';
+            } else {
+                pauseChartBtn.textContent = 'Pausar Gráfico';
+                pauseChartBtn.style.backgroundColor = '#6c757d';
+            }
         }
     });
+
+    // --- New Functionality: File Loading and Log Scale ---
+
+    
 
     zeroBtn.addEventListener('click', async () => {
         statusIndicator.textContent = 'Poniendo a cero...';
@@ -642,6 +684,78 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    const loadFileList = async () => {
+        const files = await fetchData('/files');
+        if (files && Array.isArray(files)) {
+            fileSelect.innerHTML = files.length > 0 ? '<option value="">-- Seleccione un archivo --</option>' : '<option value="">-- No hay archivos --</option>';
+            files.forEach(file => {
+                const option = document.createElement('option');
+                option.value = file;
+                option.textContent = file;
+                fileSelect.appendChild(option);
+            });
+        } else {
+            fileSelect.innerHTML = '<option value="">-- Error al cargar --</option>';
+        }
+    };
+
+    loadFileBtn.addEventListener('click', async () => {
+        const filename = fileSelect.value;
+        if (!filename) {
+            alert('Por favor, seleccione un archivo para cargar.');
+            return;
+        }
+
+        statusIndicator.textContent = `Cargando archivo: ${filename}...`;
+        statusIndicator.style.backgroundColor = 'var(--primary-color)';
+        statusIndicator.style.color = 'white';
+
+        const fileData = await fetchData(`/file/${filename}`);
+
+        if (fileData && Array.isArray(fileData)) {
+            viewingMode = 'file';
+            isChartPaused = true; // Effectively paused
+            pauseChartBtn.textContent = 'Volver a Tiempo Real';
+            pauseChartBtn.style.backgroundColor = 'var(--primary-color)';
+
+            chart.data.datasets.forEach(ds => ds.data = []);
+
+            fileData.forEach(point => {
+                const timestamp = point.timestamp; // Already in ms
+                chart.data.datasets[0].data.push({ x: timestamp, y: point.x });
+                chart.data.datasets[1].data.push({ x: timestamp, y: point.y });
+                chart.data.datasets[2].data.push({ x: timestamp, y: point.z });
+            });
+            chart.update();
+            statusIndicator.textContent = `Mostrando archivo: ${filename}`;
+            statusIndicator.style.backgroundColor = 'var(--success-color)';
+        } else {
+            statusIndicator.textContent = 'Error al cargar el archivo.';
+            statusIndicator.style.backgroundColor = 'var(--danger-color)';
+        }
+    });
+
+    logScaleCheck.addEventListener('change', () => {
+        if (logScaleCheck.checked) {
+            chart.options.scales.x.type = 'logarithmic';
+            chart.options.scales.x.title = { display: true, text: 'Tiempo (Escala Logarítmica)' };
+            chart.options.scales.x.ticks = {
+                callback: function(value, index, values) {
+                    // Convierte el timestamp (milisegundos) a un formato de hora legible
+                    return new Date(value).toLocaleTimeString();
+                }
+            };
+            delete chart.options.scales.x.time;
+        } else {
+            Object.assign(chart.options.scales.x, timeScaleOptions);
+            // Elimina el callback de ticks personalizado para no interferir con la escala de tiempo normal
+            delete chart.options.scales.x.ticks;
+        }
+        chart.update();
+    });
+
+    // --- Initial Load and Intervals ---
+
     setInterval(async () => {
         const sensorData = await fetchData('/data');
         updateLiveValues(sensorData);
@@ -653,6 +767,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 2000);
     
     fetchData('/status').then(updateUIFromStatus);
+    loadFileList();
 });
 </script>
 </body>

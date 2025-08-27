@@ -6,6 +6,7 @@ from datetime import datetime
 import os
 import bisect
 from collections import deque
+import pandas as pd
 
 from adxl355 import ADXL355
 from interrupt import GPIOInterrupt
@@ -327,6 +328,47 @@ def event_config():
         return jsonify({'success': True, 'message': 'Configuración de eventos guardada.', 'config': config})
     except (ValueError, TypeError, KeyError) as e:
         return jsonify({'success': False, 'message': f'Datos inválidos: {e}'}), 400
+
+@app.route('/files', methods=['GET'])
+def list_files():
+    data_dir = "data"
+    if not os.path.exists(data_dir):
+        return jsonify([])
+    
+    try:
+        files = [f for f in os.listdir(data_dir) if f.endswith('.csv')]
+        files.sort(key=lambda f: os.path.getmtime(os.path.join(data_dir, f)), reverse=True)
+        return jsonify(files)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/file/<path:filename>', methods=['GET'])
+def get_file_data(filename):
+    data_dir = "data"
+    # Basic security check to prevent directory traversal
+    if '..' in filename or filename.startswith('/'):
+        return jsonify({'error': 'Acceso no permitido'}), 400
+        
+    file_path = os.path.join(data_dir, filename)
+    
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'Archivo no encontrado'}), 404
+        
+    try:
+        df = pd.read_csv(file_path)
+        if not all(col in df.columns for col in ['timestamp', 'x', 'y', 'z']):
+            return jsonify({'error': 'Formato de archivo CSV inválido'}), 400
+
+        # Convert timestamp to milliseconds since epoch for JavaScript
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df['timestamp_ms'] = (df['timestamp'] - pd.Timestamp("1970-01-01")) // pd.Timedelta('1ms')
+        
+        # Select only the columns we need and rename timestamp_ms to timestamp
+        result_df = df[['timestamp_ms', 'x', 'y', 'z']].rename(columns={'timestamp_ms': 'timestamp'})
+        
+        return jsonify(result_df.to_dict(orient='records'))
+    except Exception as e:
+        return jsonify({'error': f'Error al procesar el archivo: {e}'}), 500
 
 @app.route('/config', methods=['POST'])
 def configure_sensor():
