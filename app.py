@@ -28,7 +28,6 @@ config = {
     "pre_record_time": 2.0,
     "time_window": 10.0,
     "umbral_mode": "Absoluto",  # 'Absoluto' o 'Relativo'
-    "auto_center": True,
     "center_x": 0.0, "center_y": 0.0, "center_z": 1.0,
     "delta_x": 0.1, "delta_y": 0.1, "delta_z": 0.1,
     "min_x": -0.5, "max_x": 0.5,
@@ -310,16 +309,17 @@ def event_config():
     global config
     data = request.get_json()
     try:
-        for key in ['auto_record', 'umbral_mode', 'auto_center']:
+        for key in ['auto_record', 'umbral_mode']:
             if key in data:
                 if isinstance(data[key], bool):
                     config[key] = data[key]
                 else:
                     config[key] = str(data[key])
 
-        for key in ['cooldown', 'pre_record_time', 'time_window', 'delta_x', 'delta_y', 'delta_z',
+        for key in ['cooldown', 'pre_record_time', 'time_window', 
+                    'center_x', 'center_y', 'center_z', 'delta_x', 'delta_y', 'delta_z',
                     'min_x', 'max_x', 'min_y', 'max_y', 'min_z', 'max_z']:
-            if key in data and data[key] is not None:
+            if key in data and data[key] is not None and data[key] != '':
                 config[key] = float(data[key])
         
         save_config()
@@ -327,26 +327,6 @@ def event_config():
         return jsonify({'success': True, 'message': 'Configuración de eventos guardada.', 'config': config})
     except (ValueError, TypeError, KeyError) as e:
         return jsonify({'success': False, 'message': f'Datos inválidos: {e}'}), 400
-
-@app.route('/auto_center', methods=['POST'])
-def auto_center():
-    global config
-    if not sensor_available:
-        return jsonify({'error': 'Sensor no disponible'}), 503
-
-    SAMPLES_FOR_CENTERING = 100
-    with sensor.buffer_lock:
-        if len(sensor.buffer) < SAMPLES_FOR_CENTERING:
-            return jsonify({'success': False, 'message': f'No hay suficientes muestras. Espere un momento.'}), 400
-        samples_to_avg = list(sensor.buffer)[-SAMPLES_FOR_CENTERING:]
-
-    config['center_x'] = sum(s['x'] - config['offsets']['x'] for s in samples_to_avg) / SAMPLES_FOR_CENTERING
-    config['center_y'] = sum(s['y'] - config['offsets']['y'] for s in samples_to_avg) / SAMPLES_FOR_CENTERING
-    config['center_z'] = sum(s['z'] - config['offsets']['z'] for s in samples_to_avg) / SAMPLES_FOR_CENTERING
-    
-    save_config()
-    print(f"Nuevos centros calculados: X:{config['center_x']:.3f}, Y:{config['center_y']:.3f}, Z:{config['center_z']:.3f}")
-    return jsonify({'success': True, 'message': 'Centro re-calculado.', 'config': config})
 
 @app.route('/config', methods=['POST'])
 def configure_sensor():

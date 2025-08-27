@@ -26,6 +26,8 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            height: 100vh;
+            box-sizing: border-box;
         }
         .container {
             width: 100%;
@@ -33,10 +35,19 @@
             display: grid;
             grid-template-columns: 1fr;
             gap: 20px;
+            height: 100%;
         }
         @media (min-width: 992px) {
             .container {
                 grid-template-columns: 300px 1fr;
+                grid-template-rows: 1fr; /* Ensure single row */
+            }
+            .panel.controls {
+                overflow-y: auto;
+            }
+            main.panel {
+                display: flex;
+                flex-direction: column;
             }
         }
         .panel {
@@ -45,6 +56,7 @@
             padding: 20px;
             box-shadow: var(--shadow);
             border: 1px solid var(--border-color);
+            box-sizing: border-box;
         }
         h2 {
             margin-top: 0;
@@ -76,6 +88,7 @@
             position: relative;
             height: 40vh;
             min-height: 300px;
+            flex-grow: 1;
         }
         .controls .control-group {
             margin-bottom: 20px;
@@ -164,6 +177,14 @@
             text-align: center;
             font-size: 0.85em;
             color: #495057;
+        }
+        .dual-input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .dual-input-group .controls {
+            width: 50%;
         }
     </style>
 </head>
@@ -254,19 +275,19 @@
 
                 <div id="relative-thresholds" style="display: none;">
                     <div class="control-group">
-                        <button id="autoCenterBtn" class="btn" style="background-color: #17a2b8; margin-bottom: 10px;">Auto-Centrar</button>
-                        <div id="center-display" class="offsets-info">
-                            <small>Centro: X: 0.0, Y: 0.0, Z: 1.0</small>
+                        <label>Centro y Delta (X, Y, Z)</label>
+                        <div class="dual-input-group">
+                            <input type="number" id="centerX" step="any" placeholder="Centro X" class="controls">
+                            <input type="number" id="deltaX" step="any" placeholder="Delta X" class="controls">
                         </div>
-                    </div>
-                    <div class="control-group">
-                        <label for="deltaX">Delta X</label><input type="number" id="deltaX" step="any" class="controls">
-                    </div>
-                    <div class="control-group">
-                        <label for="deltaY">Delta Y</label><input type="number" id="deltaY" step="any" class="controls">
-                    </div>
-                    <div class="control-group">
-                        <label for="deltaZ">Delta Z</label><input type="number" id="deltaZ" step="any" class="controls">
+                        <div class="dual-input-group">
+                            <input type="number" id="centerY" step="any" placeholder="Centro Y" class="controls">
+                            <input type="number" id="deltaY" step="any" placeholder="Delta Y" class="controls">
+                        </div>
+                        <div class="dual-input-group">
+                            <input type="number" id="centerZ" step="any" placeholder="Centro Z" class="controls">
+                            <input type="number" id="deltaZ" step="any" placeholder="Delta Z" class="controls">
+                        </div>
                     </div>
                 </div>
                 <button id="saveEventConfigBtn" class="btn btn-save" style="margin-top: 15px;">Guardar Config. Evento</button>
@@ -300,7 +321,10 @@
     </aside>
 
     <main class="panel">
-        <h2>Datos en Tiempo Real</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--primary-color); padding-bottom: 10px; margin-bottom: 20px;">
+            <h2 style="margin: 0; border: none; padding: 0;">Datos en Tiempo Real</h2>
+            <button id="pauseChartBtn" class="btn" style="width: auto; padding: 5px 10px; background-color: #6c757d; font-size: 0.9em;">Pausar Gráfico</button>
+        </div>
         <div class="live-data-grid">
             <div class="data-box"><div class="label">Eje X</div><div id="xVal" class="value">--</div></div>
             <div class="data-box"><div class="label">Eje Y</div><div id="yVal" class="value">--</div></div>
@@ -316,6 +340,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const MAX_CHART_POINTS = 100;
+    let isChartPaused = false;
 
     /**
      * Helper function to safely update form controls.
@@ -375,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const zeroBtn = document.getElementById('zeroBtn');
     const saveOffsetsBtn = document.getElementById('saveOffsetsBtn');
     const saveEventConfigBtn = document.getElementById('saveEventConfigBtn');
-    const autoCenterBtn = document.getElementById('autoCenterBtn');
+    const pauseChartBtn = document.getElementById('pauseChartBtn');
     const statusIndicator = document.getElementById('status-indicator');
 
     const fetchData = async (url, options) => {
@@ -400,6 +425,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById("yVal").textContent = sensor.y.toFixed(4) + ' g';
         document.getElementById("zVal").textContent = sensor.z.toFixed(4) + ' g';
         document.getElementById("tempVal").textContent = sensor.temp.toFixed(2) + ' °C';
+
+        if (isChartPaused) return;
  
         const timestamp = sensor.timestamp * 1000; // Milliseconds for JS Date
         chart.data.datasets.forEach(ds => {
@@ -472,14 +499,12 @@ document.addEventListener('DOMContentLoaded', () => {
             setControlValue('minZ', cfg.min_z);
             setControlValue('maxZ', cfg.max_z);
 
+            setControlValue('centerX', cfg.center_x);
+            setControlValue('centerY', cfg.center_y);
+            setControlValue('centerZ', cfg.center_z);
             setControlValue('deltaX', cfg.delta_x);
             setControlValue('deltaY', cfg.delta_y);
             setControlValue('deltaZ', cfg.delta_z);
-
-            const centerDisplay = document.getElementById('center-display');
-            if (cfg.center_x !== undefined) {
-                centerDisplay.innerHTML = `<small>Centro: X: ${cfg.center_x.toFixed(3)}, Y: ${cfg.center_y.toFixed(3)}, Z: ${cfg.center_z.toFixed(3)}</small>`;
-            }
         }
     }
 
@@ -498,6 +523,17 @@ document.addEventListener('DOMContentLoaded', () => {
             })
         });
         if (data) updateUIFromStatus(data);
+    });
+
+    pauseChartBtn.addEventListener('click', () => {
+        isChartPaused = !isChartPaused;
+        if (isChartPaused) {
+            pauseChartBtn.textContent = 'Reanudar Gráfico';
+            pauseChartBtn.style.backgroundColor = 'var(--primary-color)';
+        } else {
+            pauseChartBtn.textContent = 'Pausar Gráfico';
+            pauseChartBtn.style.backgroundColor = '#6c757d';
+        }
     });
 
     zeroBtn.addEventListener('click', async () => {
@@ -547,18 +583,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    autoCenterBtn.addEventListener('click', async () => {
-        statusIndicator.textContent = 'Auto-centrando...';
-        const result = await fetchData('/auto_center', { method: 'POST' });
-        if (result) {
-            statusIndicator.textContent = result.message;
-            statusIndicator.style.backgroundColor = result.success ? 'var(--success-color)' : 'var(--danger-color)';
-            if (result.success) {
-                updateUIFromStatus({ config: result.config });
-            }
-        }
-    });
-
     saveEventConfigBtn.addEventListener('click', async () => {
         const eventConfig = {
             auto_record: document.getElementById('autoRecordCheck').checked,
@@ -569,6 +593,9 @@ document.addEventListener('DOMContentLoaded', () => {
             min_x: document.getElementById('minX').value, max_x: document.getElementById('maxX').value,
             min_y: document.getElementById('minY').value, max_y: document.getElementById('maxY').value,
             min_z: document.getElementById('minZ').value, max_z: document.getElementById('maxZ').value,
+            center_x: document.getElementById('centerX').value,
+            center_y: document.getElementById('centerY').value,
+            center_z: document.getElementById('centerZ').value,
             delta_x: document.getElementById('deltaX').value,
             delta_y: document.getElementById('deltaY').value,
             delta_z: document.getElementById('deltaZ').value,
