@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ADXL355 Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
         :root {
             --bg-color: #f4f7f6;
@@ -316,6 +317,17 @@
 document.addEventListener('DOMContentLoaded', () => {
     const MAX_CHART_POINTS = 100;
 
+    /**
+     * Helper function to safely update form controls.
+     * It avoids overwriting a value if the user is currently focused on the input.
+     */
+    const setControlValue = (elementId, value, property = 'value') => {
+        const element = document.getElementById(elementId);
+        if (element && document.activeElement !== element) {
+            element[property] = value;
+        }
+    };
+
     const ctx = document.getElementById("xyzChart").getContext("2d");
     const chart = new Chart(ctx, {
         type: "line",
@@ -331,8 +343,28 @@ document.addEventListener('DOMContentLoaded', () => {
             animation: false,
             maintainAspectRatio: false,
             scales: {
-                y: { suggestedMin: -2.5, suggestedMax: 2.5 },
-                x: { ticks: { display: false } }
+                y: { 
+                    suggestedMin: -2.5, 
+                    suggestedMax: 2.5,
+                    title: {
+                        display: true,
+                        text: 'Aceleración (g)'
+                    }
+                },
+                x: { 
+                    type: 'time',
+                    time: {
+                        unit: 'second',
+                        displayFormats: {
+                            second: 'HH:mm:ss'
+                        },
+                        tooltipFormat: 'HH:mm:ss.SSS'
+                    },
+                    title: {
+                        display: true,
+                        text: 'Tiempo'
+                    }
+                }
             },
             plugins: { legend: { position: 'top' } }
         }
@@ -368,16 +400,14 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById("yVal").textContent = sensor.y.toFixed(4) + ' g';
         document.getElementById("zVal").textContent = sensor.z.toFixed(4) + ' g';
         document.getElementById("tempVal").textContent = sensor.temp.toFixed(2) + ' °C';
-
-        const time = new Date(sensor.timestamp * 1000).toLocaleTimeString();
-        chart.data.labels.push(time);
-        chart.data.datasets.forEach((ds, i) => {
+ 
+        const timestamp = sensor.timestamp * 1000; // Milliseconds for JS Date
+        chart.data.datasets.forEach(ds => {
             const axis = ds.label.toLowerCase();
-            ds.data.push(sensor[axis]);
+            ds.data.push({ x: timestamp, y: sensor[axis] });
         });
-
-        if (chart.data.labels.length > MAX_CHART_POINTS) {
-            chart.data.labels.shift();
+ 
+        if (chart.data.datasets[0].data.length > MAX_CHART_POINTS) {
             chart.data.datasets.forEach(ds => ds.data.shift());
         }
         chart.update();
@@ -402,15 +432,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // Populate all config fields from status data
         if (status.config) {
             const cfg = status.config;
-            document.getElementById('rangeSelect').value = cfg.range;
-            document.getElementById('odrSelect').value = cfg.odr;
-            document.getElementById('fifoSamplesInput').value = cfg.fifo_samples;
-            document.getElementById('filenameInput').value = cfg.filename;
-            document.getElementById('stabilizationInput').value = cfg.stabilization;
+            setControlValue('rangeSelect', cfg.range);
+            setControlValue('odrSelect', cfg.odr);
+            setControlValue('fifoSamplesInput', cfg.fifo_samples);
+            setControlValue('filenameInput', cfg.filename);
+            setControlValue('stabilizationInput', cfg.stabilization);
             
-            document.getElementById('offsetX').value = cfg.offsets.x;
-            document.getElementById('offsetY').value = cfg.offsets.y;
-            document.getElementById('offsetZ').value = cfg.offsets.z;
+            setControlValue('offsetX', cfg.offsets.x);
+            setControlValue('offsetY', cfg.offsets.y);
+            setControlValue('offsetZ', cfg.offsets.z);
 
             const offsetsDisplay = document.getElementById('offsets-display');
             offsetsDisplay.innerHTML = `<small>Offsets: X: ${cfg.offsets.x.toFixed(3)}, Y: ${cfg.offsets.y.toFixed(3)}, Z: ${cfg.offsets.z.toFixed(3)}</small>`;
@@ -419,27 +449,32 @@ document.addEventListener('DOMContentLoaded', () => {
         // Populate event detection fields
         if (status.config) {
             const cfg = status.config;
-            document.getElementById('autoRecordCheck').checked = cfg.auto_record;
-            document.getElementById('cooldownInput').value = cfg.cooldown;
-            document.getElementById('preRecInput').value = cfg.pre_record_time;
-            document.getElementById('timeWindowInput').value = cfg.time_window;
+            setControlValue('autoRecordCheck', cfg.auto_record, 'checked');
+            setControlValue('cooldownInput', cfg.cooldown);
+            setControlValue('preRecInput', cfg.pre_record_time);
+            setControlValue('timeWindowInput', cfg.time_window);
 
-            const umbralRadio = document.querySelector(`input[name="umbralMode"][value="${cfg.umbral_mode}"]`);
-            if (umbralRadio) {
-                umbralRadio.checked = true;
-                umbralRadio.dispatchEvent(new Event('change'));
+            const umbralRadios = document.querySelectorAll('input[name="umbralMode"]');
+            const isEditingUmbral = Array.from(umbralRadios).some(r => r === document.activeElement);
+
+            if (!isEditingUmbral) {
+                const umbralRadio = document.querySelector(`input[name="umbralMode"][value="${cfg.umbral_mode}"]`);
+                if (umbralRadio && !umbralRadio.checked) {
+                    umbralRadio.checked = true;
+                    umbralRadio.dispatchEvent(new Event('change'));
+                }
             }
 
-            document.getElementById('minX').value = cfg.min_x;
-            document.getElementById('maxX').value = cfg.max_x;
-            document.getElementById('minY').value = cfg.min_y;
-            document.getElementById('maxY').value = cfg.max_y;
-            document.getElementById('minZ').value = cfg.min_z;
-            document.getElementById('maxZ').value = cfg.max_z;
+            setControlValue('minX', cfg.min_x);
+            setControlValue('maxX', cfg.max_x);
+            setControlValue('minY', cfg.min_y);
+            setControlValue('maxY', cfg.max_y);
+            setControlValue('minZ', cfg.min_z);
+            setControlValue('maxZ', cfg.max_z);
 
-            document.getElementById('deltaX').value = cfg.delta_x;
-            document.getElementById('deltaY').value = cfg.delta_y;
-            document.getElementById('deltaZ').value = cfg.delta_z;
+            setControlValue('deltaX', cfg.delta_x);
+            setControlValue('deltaY', cfg.delta_y);
+            setControlValue('deltaZ', cfg.delta_z);
 
             const centerDisplay = document.getElementById('center-display');
             if (cfg.center_x !== undefined) {

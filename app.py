@@ -164,7 +164,7 @@ def stop_auto_record_thread(start_time):
     """Espera a que pase la ventana de grabación y luego detiene la grabación."""
     global recording, auto_recording_active
     
-    record_duration = config.get('time_window', 10.0)
+    record_duration = float(config.get('time_window', 10.0))
     time.sleep(record_duration)
 
     if auto_recording_active and abs(recording_start_time - start_time) < 0.1:
@@ -200,7 +200,7 @@ def irq_handler():
                         print(f"¡Evento detectado! Iniciando grabación automática.")
                         last_event_time = time.time()
                         recording, auto_recording_active = True, True
-                        recording_start_time = last_event_time - config.get('pre_record_time', 2.0)
+                        recording_start_time = last_event_time - float(config.get('pre_record_time', 2.0))
                         threading.Thread(target=stop_auto_record_thread, args=(recording_start_time,)).start()
                         break
 
