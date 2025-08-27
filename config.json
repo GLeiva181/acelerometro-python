@@ -1,6 +1,8 @@
 {
     "range": 1,
     "odr": 0,
+    "hpf_corner": 0,
+    "standby": false,
     "fifo_samples": 32,
     "offsets": {
         "x": -0.008949921875,

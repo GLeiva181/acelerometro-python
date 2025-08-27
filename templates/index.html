@@ -880,19 +880,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     logScaleCheck.addEventListener('change', () => {
         if (logScaleCheck.checked) {
-            chart.options.scales.x.type = 'logarithmic';
-            chart.options.scales.x.title = { display: true, text: 'Tiempo (Escala Logarítmica)' };
-            chart.options.scales.x.ticks = {
-                callback: function(value, index, values) {
-                    // Convierte el timestamp (milisegundos) a un formato de hora legible
-                    return new Date(value).toLocaleTimeString();
+            // Reemplazamos el objeto de escala completo para forzar una actualización total.
+            chart.options.scales.x = {
+                type: 'logarithmic',
+                title: { display: true, text: 'Tiempo (Escala Logarítmica)' },
+                ticks: {
+                    // El eje logarítmico no formatea timestamps por defecto, así que lo hacemos manualmente.
+                    callback: (value) => new Date(value).toLocaleTimeString()
                 }
             };
-            delete chart.options.scales.x.time;
         } else {
-            Object.assign(chart.options.scales.x, timeScaleOptions);
-            // Elimina el callback de ticks personalizado para no interferir con la escala de tiempo normal
-            delete chart.options.scales.x.ticks;
+            // Restauramos la configuración de escala de tiempo original.
+            chart.options.scales.x = { ...timeScaleOptions };
         }
         chart.update();
     });

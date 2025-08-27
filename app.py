@@ -67,8 +67,8 @@ sensor_available = False
 recording = False
 recording_start_time = 0.0
 simulation_enabled = False
-last_event_time = 0.0
 auto_recording_active = False
+in_bounds_start_time = None
 
 try:
     sensor = ADXL355(measure_range=config['range'])
@@ -165,49 +165,52 @@ def check_for_event(data):
             
     return False
 
-def stop_auto_record_thread(start_time):
-    """Espera a que pase la ventana de grabación y luego detiene la grabación."""
-    global recording, auto_recording_active
-    
-    record_duration = float(config.get('time_window', 10.0))
-    time.sleep(record_duration)
-
-    if auto_recording_active and abs(recording_start_time - start_time) < 0.1:
-        print(f"Finalizando grabación automática de {config.get('pre_record_time', 2.0) + record_duration}s.")
-        
-        t_inicio = recording_start_time
-        t_fin = time.time()
-        
-        event_filename = f"{config.get('filename', 'datos')}_evento"
-        grabar_archivo(t_inicio, t_fin, event_filename)
-
-        recording = False
-        auto_recording_active = False
-    else:
-        print("Grabación automática cancelada o ya detenida manualmente.")
-
 def irq_handler():
     """
-    Hilo que espera interrupciones, lee FIFO y busca eventos.
+    Hilo que espera interrupciones, lee FIFO y gestiona la grabación por eventos.
     """
-    global last_event_time, recording, recording_start_time, auto_recording_active
+    global recording, recording_start_time, auto_recording_active, in_bounds_start_time
+    
     while True:
+        # Espera una interrupción (datos listos) o un timeout
         events = irq.wait_event(timeout=1.0)
-        if events == [] or events:
-            with sensor.buffer_lock:
-                start_idx = len(sensor.buffer)
-                sensor.read_fifo_with_meta()
-                new_data = list(sensor.buffer)[start_idx:]
+        if not events: # Timeout, no hay datos nuevos
+            continue
 
-            if not recording and config.get('auto_record', False) and (time.time() - last_event_time) > float(config.get('cooldown', 5.0)):
-                for d in new_data:
-                    if check_for_event(d):
-                        print(f"¡Evento detectado! Iniciando grabación automática.")
-                        last_event_time = time.time()
-                        recording, auto_recording_active = True, True
-                        recording_start_time = last_event_time - float(config.get('pre_record_time', 2.0))
-                        threading.Thread(target=stop_auto_record_thread, args=(recording_start_time,)).start()
-                        break
+        with sensor.buffer_lock:
+            start_idx = len(sensor.buffer)
+            sensor.read_fifo_with_meta()
+            new_data = list(sensor.buffer)[start_idx:]
+
+        if not config.get('auto_record', False):
+            continue # La grabación por evento está desactivada, no hacemos nada.
+
+        for d in new_data:
+            is_out_of_bounds = check_for_event(d)
+
+            # --- Lógica de INICIO de grabación ---
+            if is_out_of_bounds and not auto_recording_active:
+                print(f"¡Evento detectado! Iniciando grabación automática.")
+                recording = True
+                auto_recording_active = True
+                recording_start_time = d['timestamp'] - float(config.get('pre_record_time', 2.0))
+                in_bounds_start_time = None # Reseteamos el contador de "en calma"
+
+            # --- Lógica de FIN de grabación ---
+            if auto_recording_active:
+                if not is_out_of_bounds: # Si estamos DENTRO de los umbrales
+                    if in_bounds_start_time is None:
+                        in_bounds_start_time = d['timestamp'] # Marcamos cuándo empezó la calma
+                    
+                    elapsed_in_bounds = d['timestamp'] - in_bounds_start_time
+                    if elapsed_in_bounds >= float(config.get('cooldown', 5.0)):
+                        print(f"Valores estables por {config['cooldown']}s. Finalizando grabación automática.")
+                        event_filename = f"{config.get('filename', 'datos')}_evento"
+                        grabar_archivo(recording_start_time, d['timestamp'], event_filename)
+                        recording, auto_recording_active, in_bounds_start_time = False, False, None
+                        break # Salimos del bucle de 'new_data'
+                else: # Si volvemos a salirnos de los umbrales
+                    in_bounds_start_time = None # Reseteamos el contador de calma
 
 @app.route("/")
 def index():
