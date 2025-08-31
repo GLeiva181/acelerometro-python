@@ -72,10 +72,9 @@ in_bounds_start_time = None
 
 try:
     sensor = ADXL355(measure_range=config['range'])
-    sensor.set_odr(config['odr'])
+    sensor.set_filter(odr_value=config['odr'], hpf_corner=config['hpf_corner'])
     sensor.set_fifo_samples(config['fifo_samples'])
-    sensor.set_hpf_corner(config['hpf_corner'])
-    sensor.set_standby(config['standby'])
+    sensor.set_power_ctl(standby=config['standby'], temp_off=False, drdy_off=False)
     irq = GPIOInterrupt(pin=22)
     sensor_available = True
     print("Sensor ADXL355 detectado. Usando interrupciones GPIO y configuración cargada.")

@@ -32,7 +32,7 @@ ZDATA2 = 0x0F
 ZDATA1 = 0x10
 RANGE = 0x2C
 POWER_CTL = 0x2D
-FILTER = 0x28 # New constant for Filter register
+FILTER = 0x28 # 7-> Reserved, 6:4-> HPF_CORNER, 3:0-> ODR_LPF
 DEVID_AD = 0x00 # New constant for Device ID register
 TEMP02 = 0x06
 TEMP01 = 0x07
@@ -83,26 +83,32 @@ class ADXL355:
 
         # Device init
         self.set_measure_range(measure_range)
-        self.set_odr(0x00) # Set ODR to 4000 Hz
+        self.set_filter(odr_value=0x00, hpf_corner=0x00)
         self.set_fifo_samples(FIFO_SAMPLES_VALUE)
         self.set_interrupt()
-        self.enable_measure_mode()
+        self.set_power_ctl(standby=False, temp_off=False, drdy_off=False)
         self.get_measure_range()
 
         # Deque para histórico
         self.buffer = deque(maxlen=MAX_MUESTRAS)
         self.buffer_lock = threading.Lock()
 
-    def set_odr(self, odr_value):
-        """Sets the Output Data Rate (ODR) on ADXL355 device.
-
-        Args:
-            odr_value (int): Value to write to the FILTER register.
-
-        Returns:
-            None
+    def set_filter(self, odr_value=0x00, hpf_corner=0x00):
         """
-        self.write_data(FILTER, odr_value)
+        Configura el filtro del ADXL355.
+        odr_value: valor [0..15] para seleccionar ODR + LPF (bits [3:0])
+        hpf_corner: valor [0..7] para seleccionar HPF corner (bits [6:4])
+        """
+        if odr_value < 0 or odr_value > 0x0F:
+            raise ValueError("odr_value debe estar entre 0 y 15")
+        if hpf_corner < 0 or hpf_corner > 0x07:
+            raise ValueError("hpf_corner debe estar entre 0 y 7")
+
+        # Armo el byte del registro
+        filter_value = ((hpf_corner & 0x07) << 4) | (odr_value & 0x0F)
+
+        # Lo escribo en el registro FILTER
+        self.write_data(FILTER, filter_value)
 
     def write_data(self, address, value):
         """Writes data on ADXL355 device address.
@@ -190,15 +196,27 @@ class ADXL355:
             self.measure_range=-1
             raise ValueError("Invalid measure range value")
         return self.measure_range
+    
+    def set_hpf_corner():
+        self.write_data(INTERRUPT_MAP, INT_MODE)
 
-    def enable_measure_mode(self,measure_mode=MEASURE_MODE):
+    def set_power_ctl(self, standby=False, temp_off=False, drdy_off=False):
         """
-        Enables measure mode on ADXL355 device.
+        Configura el registro POWER_CTL del ADXL355.
+        Args:
+            standby (bool): True = Standby mode, False = Measure mode
+            temp_off (bool): True = deshabilita temperatura
+            drdy_off (bool): True = deshabilita Data Ready
+        """
+        value = 0
+        if standby:
+            value |= 0x01  # Bit0
+        if temp_off:
+            value |= 0x02  # Bit1
+        if drdy_off:
+            value |= 0x04  # Bit2
 
-        Returns:
-            None
-        """
-        self.write_data(POWER_CTL, measure_mode)
+        self.write_data(POWER_CTL, value)
 
     @staticmethod
     def bytes_to_int20(b):
