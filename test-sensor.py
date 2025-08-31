@@ -17,11 +17,15 @@ except Exception as e:
     print(f"Sensor ADXL355 no detectado: {e}")
 
 try:
+    print("DEVID_AD: ", adxl355.read_data(DEVID_AD))
+    print("INT MAP: ", adxl355.get_interrupt())
+
     while True:
         # print(adxl355.fifo_entries())
-        data = adxl355.get_temperature()
-        if data != None:
-            print(data, time.time())
+        temp = adxl355.get_temperature()
+        xyz = adxl355.get_axes()
+        print(temp, xyz, time.time())
+        time.sleep(5)
 
 except KeyboardInterrupt:
     print("\n⏹ Lectura interrumpida.")

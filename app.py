@@ -75,7 +75,7 @@ try:
     sensor.set_filter(odr_value=config['odr'], hpf_corner=config['hpf_corner'])
     sensor.set_fifo_samples(config['fifo_samples'])
     sensor.set_power_ctl(standby=config['standby'], temp_off=False, drdy_off=False)
-    irq = GPIOInterrupt(pin=22)
+    irq = GPIOInterrupt(pin=12)
     sensor_available = True
     print("Sensor ADXL355 detectado. Usando interrupciones GPIO y configuración cargada.")
 except Exception as e:
@@ -174,12 +174,13 @@ def irq_handler():
         # Espera una interrupción (datos listos) o un timeout
         events = irq.wait_event(timeout=1.0)
         if not events: # Timeout, no hay datos nuevos
+            #print("Timeout. No hay datos nuevos.")
             continue
-
         with sensor.buffer_lock:
             start_idx = len(sensor.buffer)
             sensor.read_fifo_with_meta()
             new_data = list(sensor.buffer)[start_idx:]
+            #print("New data available")
 
         if not config.get('auto_record', False):
             continue # La grabación por evento está desactivada, no hacemos nada.

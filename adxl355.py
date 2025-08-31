@@ -178,10 +178,16 @@ class ADXL355:
             raise ValueError("Number of FIFO samples must be between 1 and 32.")
         self.write_data(FIFO_SAMPLES, num_samples)
 
-    def set_interrupt(self):
+    def set_interrupt(self, int_mode=INT_MODE):
         """Sets interrupt on ADXL355 device.
+        INT_MAP:
+        Bit 7 -> ACT_EN2    Bit 6 -> OVR_EN2    Bit 5 -> FULL_EN2   Bit 4 -> RDY_EN2
+        Bit 3 -> ACT_EN1    Bit 2 -> OVR_EN1    Bit 1 -> FULL_EN1   Bit 0 -> RDY_EN1
         """
-        self.write_data(INTERRUPT_MAP, INT_MODE)
+        self.write_data(INTERRUPT_MAP, int_mode)
+    
+    def get_interrupt(self):
+        return self.read_data(INTERRUPT_MAP)
     
     def get_measure_range(self):
         range_value = self.read_data(RANGE) & 0x03
@@ -196,9 +202,6 @@ class ADXL355:
             self.measure_range=-1
             raise ValueError("Invalid measure range value")
         return self.measure_range
-    
-    def set_hpf_corner():
-        self.write_data(INTERRUPT_MAP, INT_MODE)
 
     def set_power_ctl(self, standby=False, temp_off=False, drdy_off=False):
         """
@@ -321,6 +324,7 @@ class ADXL355:
             r["x"] = norm_xyz["x"]
             r["y"] = norm_xyz["y"]
             r["z"] = norm_xyz["z"]
+            print(r)
             self.buffer.append(r)
 
         return self.buffer
