@@ -7,9 +7,11 @@ import os
 import bisect
 from collections import deque
 import pandas as pd
+import pigpio
 
 from adxl355 import ADXL355
-from interrupt import GPIOInterrupt
+# from interrupt import GPIOInterrupt
+import RPi.GPIO as GPIO
 
 app = Flask(__name__)
 
@@ -70,12 +72,17 @@ simulation_enabled = False
 auto_recording_active = False
 in_bounds_start_time = None
 
+# ==== Configuración GPIO ====
+PIN_INT = 12
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(PIN_INT, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pull-up para active-low
+
 try:
     sensor = ADXL355(measure_range=config['range'])
     sensor.set_filter(odr_value=config['odr'], hpf_corner=config['hpf_corner'])
     sensor.set_fifo_samples(config['fifo_samples'])
     sensor.set_power_ctl(standby=config['standby'], temp_off=False, drdy_off=False)
-    irq = GPIOInterrupt(pin=12)
+    
     sensor_available = True
     print("Sensor ADXL355 detectado. Usando interrupciones GPIO y configuración cargada.")
 except Exception as e:
@@ -164,53 +171,63 @@ def check_for_event(data):
             
     return False
 
+# ==== Función para leer FIFO ====
+def leer_sensor(channel=None):
+    sensor.read_fifo_with_meta()
+
 def irq_handler():
     """
     Hilo que espera interrupciones, lee FIFO y gestiona la grabación por eventos.
     """
     global recording, recording_start_time, auto_recording_active, in_bounds_start_time
-    
+
+    GPIO.add_event_detect(PIN_INT, GPIO.FALLING, callback=leer_sensor)
+
     while True:
-        # Espera una interrupción (datos listos) o un timeout
-        events = irq.wait_event(timeout=1.0)
-        if not events: # Timeout, no hay datos nuevos
-            #print("Timeout. No hay datos nuevos.")
-            continue
-        with sensor.buffer_lock:
-            start_idx = len(sensor.buffer)
-            sensor.read_fifo_with_meta()
-            new_data = list(sensor.buffer)[start_idx:]
-            #print("New data available")
+        sensor.read_fifo_with_meta()
 
-        if not config.get('auto_record', False):
-            continue # La grabación por evento está desactivada, no hacemos nada.
+    # while True:
+    #     # Espera una interrupción (datos listos) o un timeout
+    #     events = irq.wait_event(timeout=2.0)
+    #     if not events: # Timeout, no hay datos nuevos
+    #         sensor.read_fifo_with_meta()
+    #         #print("Timeout. No hay datos nuevos.")
+    #         continue
+    #     with sensor.buffer_lock:
+    #         start_idx = len(sensor.buffer)
+    #         sensor.read_fifo_with_meta()
+    #         new_data = list(sensor.buffer)[start_idx:]
+    #         #print("New data available")
 
-        for d in new_data:
-            is_out_of_bounds = check_for_event(d)
+    #     if not config.get('auto_record', False):
+    #         continue # La grabación por evento está desactivada, no hacemos nada.
 
-            # --- Lógica de INICIO de grabación ---
-            if is_out_of_bounds and not auto_recording_active:
-                print(f"¡Evento detectado! Iniciando grabación automática.")
-                recording = True
-                auto_recording_active = True
-                recording_start_time = d['timestamp'] - float(config.get('pre_record_time', 2.0))
-                in_bounds_start_time = None # Reseteamos el contador de "en calma"
+    #     for d in new_data:
+    #         is_out_of_bounds = check_for_event(d)
 
-            # --- Lógica de FIN de grabación ---
-            if auto_recording_active:
-                if not is_out_of_bounds: # Si estamos DENTRO de los umbrales
-                    if in_bounds_start_time is None:
-                        in_bounds_start_time = d['timestamp'] # Marcamos cuándo empezó la calma
+    #         # --- Lógica de INICIO de grabación ---
+    #         if is_out_of_bounds and not auto_recording_active:
+    #             print(f"¡Evento detectado! Iniciando grabación automática.")
+    #             recording = True
+    #             auto_recording_active = True
+    #             recording_start_time = d['timestamp'] - float(config.get('pre_record_time', 2.0))
+    #             in_bounds_start_time = None # Reseteamos el contador de "en calma"
+
+    #         # --- Lógica de FIN de grabación ---
+    #         if auto_recording_active:
+    #             if not is_out_of_bounds: # Si estamos DENTRO de los umbrales
+    #                 if in_bounds_start_time is None:
+    #                     in_bounds_start_time = d['timestamp'] # Marcamos cuándo empezó la calma
                     
-                    elapsed_in_bounds = d['timestamp'] - in_bounds_start_time
-                    if elapsed_in_bounds >= float(config.get('cooldown', 5.0)):
-                        print(f"Valores estables por {config['cooldown']}s. Finalizando grabación automática.")
-                        event_filename = f"{config.get('filename', 'datos')}_evento"
-                        grabar_archivo(recording_start_time, d['timestamp'], event_filename)
-                        recording, auto_recording_active, in_bounds_start_time = False, False, None
-                        break # Salimos del bucle de 'new_data'
-                else: # Si volvemos a salirnos de los umbrales
-                    in_bounds_start_time = None # Reseteamos el contador de calma
+    #                 elapsed_in_bounds = d['timestamp'] - in_bounds_start_time
+    #                 if elapsed_in_bounds >= float(config.get('cooldown', 5.0)):
+    #                     print(f"Valores estables por {config['cooldown']}s. Finalizando grabación automática.")
+    #                     event_filename = f"{config.get('filename', 'datos')}_evento"
+    #                     grabar_archivo(recording_start_time, d['timestamp'], event_filename)
+    #                     recording, auto_recording_active, in_bounds_start_time = False, False, None
+    #                     break # Salimos del bucle de 'new_data'
+    #             else: # Si volvemos a salirnos de los umbrales
+    #                 in_bounds_start_time = None # Reseteamos el contador de calma
 
 @app.route("/")
 def index():

@@ -324,7 +324,7 @@ class ADXL355:
             r["x"] = norm_xyz["x"]
             r["y"] = norm_xyz["y"]
             r["z"] = norm_xyz["z"]
-            print(r)
+            # print(r)
             self.buffer.append(r)
 
         return self.buffer

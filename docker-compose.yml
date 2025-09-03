@@ -6,6 +6,7 @@ services:
     container_name: test-rp
     privileged: true   # necesario para acceder a /dev/gpio en la Raspberry
     devices:
+      - "/dev/mem:/dev/mem"
       - "/dev/gpiomem:/dev/gpiomem"  # acceso a GPIO
       - "/dev/gpiochip0:/dev/gpiochip0" # chip GPIO 0
       - "/dev/gpiochip1:/dev/gpiochip1" # chip GPIO 1
@@ -14,5 +15,7 @@ services:
     volumes:
       - .:/app   # monta el código local para desarrollo
       - ./data:/app/data
+      - /proc/device-tree:/proc/device-tree:ro
+      - /sys:/sys:ro
     environment:
       - PYTHONUNBUFFERED=1
