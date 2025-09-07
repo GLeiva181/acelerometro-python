@@ -26,6 +26,14 @@ config = {
     "standby": False,
     "fifo_samples": 32,
     "offsets": {'x': 0.0, 'y': 0.0, 'z': 0.0},
+    # Configuración de Temperatura
+    "temp_avg_enabled": False,
+    "temp_avg_samples": 10,
+    "temp_ref": 25.0, # Temperatura de referencia para la compensación
+    "temp_comp_enabled": False,
+    "temp_comp_x": 0.0, # Coeficiente de compensación para X (en g/°C)
+    "temp_comp_y": 0.0, # Coeficiente de compensación para Y (en g/°C)
+    "temp_comp_z": 0.0, # Coeficiente de compensación para Z (en g/°C)
     "filename": "datos_acelerometro",
     "stabilization": 0.0,
     # Configuración de Detección de Eventos
@@ -262,11 +270,32 @@ def index():
 @app.route("/data", methods=["GET"])
 def get_data():
     if sensor_available and sensor.buffer:
+        latest_data = {}
         with sensor.buffer_lock:
+            if not sensor.buffer:
+                return jsonify({'error': 'Buffer vacío'}), 500
+            
             latest_data = sensor.buffer[-1].copy()
-        latest_data['x'] -= config['offsets']['x']
-        latest_data['y'] -= config['offsets']['y']
-        latest_data['z'] -= config['offsets']['z']
+
+            if config.get('temp_avg_enabled', False):
+                num_samples = int(config.get('temp_avg_samples', 10))
+                samples_to_avg = list(sensor.buffer)[-num_samples:]
+                if samples_to_avg:
+                    avg_temp = sum(s['temp'] for s in samples_to_avg) / len(samples_to_avg)
+                    latest_data['temp'] = avg_temp
+
+        # Aplicar compensación de temperatura si está habilitada
+        if config.get('temp_comp_enabled', False):
+            temp_delta = latest_data['temp'] - config.get('temp_ref', 25.0)
+            latest_data['x'] -= temp_delta * config.get('temp_comp_x', 0.0)
+            latest_data['y'] -= temp_delta * config.get('temp_comp_y', 0.0)
+            latest_data['z'] -= temp_delta * config.get('temp_comp_z', 0.0)
+
+        # Aplicar offsets de calibración
+        latest_data['x'] -= config['offsets'].get('x', 0.0)
+        latest_data['y'] -= config['offsets'].get('y', 0.0)
+        latest_data['z'] -= config['offsets'].get('z', 0.0)
+
         return jsonify(latest_data)
     elif not sensor_available and simulation_enabled:
         # Devuelve datos de ejemplo si la simulación está activada
@@ -337,10 +366,12 @@ def zero_sensor():
     config['offsets']['y'] = sum(s['y'] for s in samples_to_avg) / len(samples_to_avg)
     # El offset de Z se calcula para que la lectura en reposo sea 1.0g
     config['offsets']['z'] = (sum(s['z'] for s in samples_to_avg) / len(samples_to_avg)) - 1.0
+    # Establece la temperatura de referencia actual para la compensación
+    config['temp_ref'] = sum(s['temp'] for s in samples_to_avg) / len(samples_to_avg)
     
     save_config()
-    print(f"Nuevos offsets calculados y guardados: {config['offsets']}")
-    return jsonify({'success': True, 'message': 'Sensor puesto a cero.', 'offsets': config['offsets']})
+    print(f"Nuevos offsets: {config['offsets']}. Temp. Ref: {config['temp_ref']:.2f}°C")
+    return jsonify({'success': True, 'message': f'Sensor puesto a cero. Temp. Ref: {config["temp_ref"]:.2f}°C', 'offsets': config['offsets'], 'temp_ref': config['temp_ref']})
 
 @app.route('/offsets', methods=['POST'])
 def set_offsets():
@@ -384,6 +415,38 @@ def event_config():
         print(f"Configuración de eventos actualizada.")
         return jsonify({'success': True, 'message': 'Configuración de eventos guardada.', 'config': config})
     except (ValueError, TypeError, KeyError) as e:
+        return jsonify({'success': False, 'message': f'Datos inválidos: {e}'}), 400
+
+@app.route('/temp_config', methods=['POST'])
+def temp_config():
+    global config
+    data = request.get_json()
+    try:
+        if 'temp_avg_enabled' in data:
+            config['temp_avg_enabled'] = bool(data['temp_avg_enabled'])
+        if 'temp_avg_samples' in data:
+            samples = int(data['temp_avg_samples'])
+            if 1 <= samples <= 1000: # Limitar para no promediar demasiadas muestras
+                config['temp_avg_samples'] = samples
+        
+        save_config()
+        print(f"Configuración de temperatura actualizada: Habilitado={config['temp_avg_enabled']}, Muestras={config['temp_avg_samples']}")
+        return jsonify({'success': True, 'message': 'Configuración de temperatura guardada.'})
+    except (ValueError, TypeError) as e:
+        return jsonify({'success': False, 'message': f'Datos inválidos: {e}'}), 400
+
+@app.route('/temp_comp_config', methods=['POST'])
+def temp_comp_config():
+    global config
+    data = request.get_json()
+    try:
+        config['temp_comp_enabled'] = bool(data.get('temp_comp_enabled', config['temp_comp_enabled']))
+        for key in ['temp_comp_x', 'temp_comp_y', 'temp_comp_z', 'temp_ref']:
+            if key in data and data[key] is not None:
+                config[key] = float(data[key])
+        save_config()
+        return jsonify({'success': True, 'message': 'Configuración de compensación de temperatura guardada.'})
+    except (ValueError, TypeError) as e:
         return jsonify({'success': False, 'message': f'Datos inválidos: {e}'}), 400
 
 @app.route('/toggle_simulation', methods=['POST'])

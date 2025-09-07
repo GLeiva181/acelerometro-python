@@ -410,6 +410,54 @@
                 <button id="saveConfigBtn" class="btn btn-save">Aplicar Configuración</button>
             </div>
         </details>
+
+        <details class="collapsible-section">
+            <summary>Configuración Temperatura</summary>
+            <div class="content">
+                <div class="control-group">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="tempAvgCheck" style="width: auto; margin-right: 10px; transform: scale(1.2);">
+                        Habilitar promediado de lectura
+                    </label>
+                </div>
+                <div class="control-group">
+                    <label for="tempAvgSamplesInput">Muestras para promediar</label>
+                    <input type="number" id="tempAvgSamplesInput" min="1" max="1000" value="10" class="controls">
+                </div>
+                <button id="saveTempConfigBtn" class="btn btn-save">Guardar Promediado</button>
+
+                <hr style="margin: 20px 0; border-top: 1px solid var(--border-color);">
+
+                <div class="control-group">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="tempCompEnabledCheck" style="width: auto; margin-right: 10px; transform: scale(1.2);">
+                        Habilitar compensación de ejes
+                    </label>
+                </div>
+                <div class="control-group">
+                    <label for="tempRefInput">Temperatura de Referencia (°C)</label>
+                    <input type="number" id="tempRefInput" step="any" class="controls">
+                    <small>Se actualiza al 'Poner a Cero'</small>
+                </div>
+                <div class="control-group">
+                    <label>Coeficientes de Compensación (g/°C)</label>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                        <label for="tempCompX" style="font-weight: bold; width: 20px; margin: 0;">X</label>
+                        <input type="number" id="tempCompX" step="any" placeholder="Coeficiente Eje X" class="controls">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                        <label for="tempCompY" style="font-weight: bold; width: 20px; margin: 0;">Y</label>
+                        <input type="number" id="tempCompY" step="any" placeholder="Coeficiente Eje Y" class="controls">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <label for="tempCompZ" style="font-weight: bold; width: 20px; margin: 0;">Z</label>
+                        <input type="number" id="tempCompZ" step="any" placeholder="Coeficiente Eje Z" class="controls">
+                    </div>
+                </div>
+                <button id="saveTempCompBtn" class="btn btn-save">Guardar Compensación</button>
+            </div>
+        </details>
+
     </aside>
 
     <main class="panel">
@@ -480,8 +528,8 @@ document.addEventListener('DOMContentLoaded', () => {
             maintainAspectRatio: false,
             scales: {
                 y: { 
-                    suggestedMin: -2.5, 
-                    suggestedMax: 2.5,
+                    suggestedMin: -1.2, 
+                    suggestedMax: 1.2,
                     title: {
                         display: true,
                         text: 'Aceleración (g)'
@@ -624,6 +672,15 @@ document.addEventListener('DOMContentLoaded', () => {
             setControlValue('offsetY', cfg.offsets.y);
             setControlValue('offsetZ', cfg.offsets.z);
 
+            setControlValue('tempAvgCheck', cfg.temp_avg_enabled, 'checked');
+            setControlValue('tempAvgSamplesInput', cfg.temp_avg_samples);
+
+            setControlValue('tempCompEnabledCheck', cfg.temp_comp_enabled, 'checked');
+            setControlValue('tempRefInput', cfg.temp_ref);
+            setControlValue('tempCompX', cfg.temp_comp_x);
+            setControlValue('tempCompY', cfg.temp_comp_y);
+            setControlValue('tempCompZ', cfg.temp_comp_z);
+
             const offsetsDisplay = document.getElementById('offsets-display');
             offsetsDisplay.innerHTML = `<small>Offsets: X: ${cfg.offsets.x.toFixed(3)}, Y: ${cfg.offsets.y.toFixed(3)}, Z: ${cfg.offsets.z.toFixed(3)}</small>`;
         }
@@ -735,8 +792,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (result) {
             statusIndicator.textContent = result.message;
             statusIndicator.style.backgroundColor = result.success ? 'var(--success-color)' : 'var(--danger-color)';
-            // Refresh the whole UI state after zeroing
-            fetchData('/status').then(updateUIFromStatus);
+            fetchData('/status').then(populateConfigForms);
         } else {
             statusIndicator.textContent = 'Error al poner a cero.';
             statusIndicator.style.backgroundColor = 'var(--danger-color)';
@@ -761,7 +817,48 @@ document.addEventListener('DOMContentLoaded', () => {
         if (result) {
             statusIndicator.textContent = result.message;
             statusIndicator.style.backgroundColor = result.success ? 'var(--success-color)' : 'var(--danger-color)';
-            fetchData('/status').then(updateUIFromStatus);
+            fetchData('/status').then(populateConfigForms);
+        }
+    });
+
+    document.getElementById('saveTempConfigBtn').addEventListener('click', async () => {
+        const tempConfig = {
+            temp_avg_enabled: document.getElementById('tempAvgCheck').checked,
+            temp_avg_samples: document.getElementById('tempAvgSamplesInput').value
+        };
+
+        statusIndicator.textContent = 'Guardando config. de temperatura...';
+        const result = await fetchData('/temp_config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(tempConfig)
+        });
+
+        if (result) {
+            statusIndicator.textContent = result.message;
+            statusIndicator.style.backgroundColor = result.success ? 'var(--success-color)' : 'var(--danger-color)';
+        }
+    });
+
+    document.getElementById('saveTempCompBtn').addEventListener('click', async () => {
+        const tempCompConfig = {
+            temp_comp_enabled: document.getElementById('tempCompEnabledCheck').checked,
+            temp_ref: document.getElementById('tempRefInput').value,
+            temp_comp_x: document.getElementById('tempCompX').value,
+            temp_comp_y: document.getElementById('tempCompY').value,
+            temp_comp_z: document.getElementById('tempCompZ').value,
+        };
+
+        statusIndicator.textContent = 'Guardando compensación de temperatura...';
+        const result = await fetchData('/temp_comp_config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(tempCompConfig)
+        });
+
+        if (result) {
+            statusIndicator.textContent = result.message;
+            statusIndicator.style.backgroundColor = result.success ? 'var(--success-color)' : 'var(--danger-color)';
         }
     });
 
