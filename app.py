@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, render_template, request
 import threading
+import logging
 import time
 import json
 from datetime import datetime
@@ -479,6 +480,10 @@ def get_status():
     return jsonify(status)
 
 if __name__ == "__main__":
+    # Silenciar los logs de acceso de Werkzeug/Flask
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
+
     if sensor_available:
         threading.Thread(target=sensor_reading_thread, daemon=True).start()
         threading.Thread(target=event_detection_thread, daemon=True).start()
