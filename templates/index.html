@@ -563,8 +563,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chart.update();
     }
 
-    function updateUIFromStatus(status) {
-        if (!status) return;
+    function updateDynamicStatus(status) {
 
         const bannerSensorStatus = document.getElementById('banner-sensor-status');
         const bannerRecordingStatus = document.getElementById('banner-recording-status');
@@ -603,6 +602,13 @@ document.addEventListener('DOMContentLoaded', () => {
             statusIndicator.style.backgroundColor = 'var(--bg-color)';
             statusIndicator.style.color = 'var(--text-color)';
         }
+    }
+
+    function populateConfigForms(status) {
+        if (!status) return;
+
+        updateDynamicStatus(status); // También actualiza la parte dinámica
+
         // Populate all config fields from status data
         if (status.config) {
             const cfg = status.config;
@@ -783,7 +789,7 @@ document.addEventListener('DOMContentLoaded', () => {
             delta_y: document.getElementById('deltaY').value,
             delta_z: document.getElementById('deltaZ').value,
         };
-
+        
         statusIndicator.textContent = 'Guardando config. de evento...';
         const result = await fetchData('/event_config', {
             method: 'POST',
@@ -794,6 +800,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (result) {
             statusIndicator.textContent = result.message;
             statusIndicator.style.backgroundColor = result.success ? 'var(--success-color)' : 'var(--danger-color)';
+            fetchData('/status').then(populateConfigForms); // Recargar config en la UI
         }
     });
 
@@ -820,6 +827,7 @@ document.addEventListener('DOMContentLoaded', () => {
             chart.data.labels = [];
             chart.data.datasets.forEach(ds => ds.data = []);
             chart.update();
+            fetchData('/status').then(populateConfigForms); // Recargar config en la UI
         } else {
             statusIndicator.textContent = `Error: ${result ? result.message : 'Fallo al aplicar'}`;
             statusIndicator.style.backgroundColor = 'var(--danger-color)';
@@ -905,10 +913,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setInterval(async () => {
         const statusData = await fetchData('/status');
-        updateUIFromStatus(statusData);
+        updateDynamicStatus(statusData); // Solo actualiza el estado dinámico
     }, 2000);
     
-    fetchData('/status').then(updateUIFromStatus);
+    fetchData('/status').then(populateConfigForms); // Carga inicial completa
     loadFileList();
 });
 </script>

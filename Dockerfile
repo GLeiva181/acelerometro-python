@@ -17,6 +17,7 @@ RUN rm -rf /var/lib/apt/lists/*
 # # Instalar el binding Python moderno de gpiod
 RUN pip3 install gpiod
 RUN pip3 install pigpio
+RUN pip3 install lgpio
 
 
 WORKDIR /app

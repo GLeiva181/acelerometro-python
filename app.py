@@ -11,7 +11,7 @@ import pigpio
 
 from adxl355 import ADXL355
 # from interrupt import GPIOInterrupt
-import RPi.GPIO as GPIO
+# import RPi.GPIO as GPIO
 
 app = Flask(__name__)
 
@@ -72,10 +72,31 @@ simulation_enabled = False
 auto_recording_active = False
 in_bounds_start_time = None
 
+last_processed_index = 0
 # ==== Configuración GPIO ====
-PIN_INT = 12
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(PIN_INT, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pull-up para active-low
+# PIN_INT = 12
+# GPIO.setmode(GPIO.BCM)
+# GPIO.setup(PIN_INT, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pull-up para active-low
+
+import gpiod
+from gpiod.line import Direction, Edge, Bias
+
+PIN_NO = 12
+chip = "/dev/gpiochip0"
+# chip = gpiod.Chip('/dev/gpiochip0')
+# led_line = chip.get_line(PIN_NO)
+# led_line.request(consumer="myLed", type=gpiod.LINE_REQ_DIR_OUT)
+gpio = gpiod.request_lines(
+            chip,
+            consumer="adxl355-int",
+            config={
+                PIN_NO: gpiod.LineSettings(
+                    direction = Direction.INPUT,
+                    edge_detection = Edge.FALLING,   # Activo en bajo → flanco descendente
+                    bias = Bias.PULL_UP    # Pull-up interno
+                )
+            }
+        )
 
 try:
     sensor = ADXL355(measure_range=config['range'])
@@ -174,60 +195,64 @@ def check_for_event(data):
 # ==== Función para leer FIFO ====
 def leer_sensor(channel=None):
     sensor.read_fifo_with_meta()
+    # print("inter")
 
-def irq_handler():
+def sensor_reading_thread():
     """
-    Hilo que espera interrupciones, lee FIFO y gestiona la grabación por eventos.
+    Hilo que configura la interrupción y espera a que se llame el callback para leer el sensor.
+    El callback 'leer_sensor' se ejecuta en un hilo separado por la librería RPi.GPIO.
     """
-    global recording, recording_start_time, auto_recording_active, in_bounds_start_time
-
-    GPIO.add_event_detect(PIN_INT, GPIO.FALLING, callback=leer_sensor)
-
+    # GPIO.add_event_detect(PIN_INT, GPIO.FALLING, callback=leer_sensor)
+    
+    # El hilo principal puede simplemente esperar o realizar otras tareas de bajo nivel.
+    # En este caso, lo mantenemos vivo para que el programa no termine.
     while True:
         sensor.read_fifo_with_meta()
+        #time.sleep(1) # Mantiene el hilo vivo sin consumir mucho CPU.
 
-    # while True:
-    #     # Espera una interrupción (datos listos) o un timeout
-    #     events = irq.wait_event(timeout=2.0)
-    #     if not events: # Timeout, no hay datos nuevos
-    #         sensor.read_fifo_with_meta()
-    #         #print("Timeout. No hay datos nuevos.")
-    #         continue
-    #     with sensor.buffer_lock:
-    #         start_idx = len(sensor.buffer)
-    #         sensor.read_fifo_with_meta()
-    #         new_data = list(sensor.buffer)[start_idx:]
-    #         #print("New data available")
+def event_detection_thread():
+    """
+    Hilo que procesa los datos del buffer para detectar eventos y gestionar la grabación automática.
+    """
+    global recording, recording_start_time, auto_recording_active, in_bounds_start_time, last_processed_index
 
-    #     if not config.get('auto_record', False):
-    #         continue # La grabación por evento está desactivada, no hacemos nada.
+    while True:
+        time.sleep(0.1) # Revisa cada 100ms
 
-    #     for d in new_data:
-    #         is_out_of_bounds = check_for_event(d)
+        if not config.get('auto_record', False):
+            continue
 
-    #         # --- Lógica de INICIO de grabación ---
-    #         if is_out_of_bounds and not auto_recording_active:
-    #             print(f"¡Evento detectado! Iniciando grabación automática.")
-    #             recording = True
-    #             auto_recording_active = True
-    #             recording_start_time = d['timestamp'] - float(config.get('pre_record_time', 2.0))
-    #             in_bounds_start_time = None # Reseteamos el contador de "en calma"
+        with sensor.buffer_lock:
+            buffer_len = len(sensor.buffer)
+            if buffer_len <= last_processed_index:
+                continue
+            new_data = list(sensor.buffer)[last_processed_index:]
+            last_processed_index = buffer_len
 
-    #         # --- Lógica de FIN de grabación ---
-    #         if auto_recording_active:
-    #             if not is_out_of_bounds: # Si estamos DENTRO de los umbrales
-    #                 if in_bounds_start_time is None:
-    #                     in_bounds_start_time = d['timestamp'] # Marcamos cuándo empezó la calma
+        for d in new_data:
+            is_out_of_bounds = check_for_event(d)
+
+            if is_out_of_bounds and not auto_recording_active:
+                print(f"¡Evento detectado! Iniciando grabación automática.")
+                recording = True
+                auto_recording_active = True
+                recording_start_time = d['timestamp'] - float(config.get('pre_record_time', 2.0))
+                in_bounds_start_time = None
+
+            if auto_recording_active:
+                if not is_out_of_bounds:
+                    if in_bounds_start_time is None:
+                        in_bounds_start_time = d['timestamp']
                     
-    #                 elapsed_in_bounds = d['timestamp'] - in_bounds_start_time
-    #                 if elapsed_in_bounds >= float(config.get('cooldown', 5.0)):
-    #                     print(f"Valores estables por {config['cooldown']}s. Finalizando grabación automática.")
-    #                     event_filename = f"{config.get('filename', 'datos')}_evento"
-    #                     grabar_archivo(recording_start_time, d['timestamp'], event_filename)
-    #                     recording, auto_recording_active, in_bounds_start_time = False, False, None
-    #                     break # Salimos del bucle de 'new_data'
-    #             else: # Si volvemos a salirnos de los umbrales
-    #                 in_bounds_start_time = None # Reseteamos el contador de calma
+                    elapsed_in_bounds = d['timestamp'] - in_bounds_start_time
+                    if elapsed_in_bounds >= float(config.get('cooldown', 5.0)):
+                        print(f"Valores estables por {config['cooldown']}s. Finalizando grabación automática.")
+                        event_filename = f"{config.get('filename', 'datos')}_evento"
+                        grabar_archivo(recording_start_time, d['timestamp'], event_filename)
+                        recording, auto_recording_active, in_bounds_start_time = False, False, None
+                        break
+                else:
+                    in_bounds_start_time = None
 
 @app.route("/")
 def index():
@@ -455,6 +480,7 @@ def get_status():
 
 if __name__ == "__main__":
     if sensor_available:
-        threading.Thread(target=irq_handler, daemon=True).start()
-        print("sensor_available")
+        threading.Thread(target=sensor_reading_thread, daemon=True).start()
+        threading.Thread(target=event_detection_thread, daemon=True).start()
+        print("Hilos de lectura de sensor y detección de eventos iniciados.")
     app.run(host="0.0.0.0", port=5000, debug=False)
