@@ -5,6 +5,8 @@ services:
     build: .
     container_name: test-rp
     privileged: true   # necesario para acceder a /dev/gpio en la Raspberry
+    ports:
+      - "5000:5000"   # host:container
     devices:
       - "/dev/mem:/dev/mem"
       - "/dev/gpiomem:/dev/gpiomem"  # acceso a GPIO

@@ -1,3 +1,4 @@
 datos_*.txt
 data/*
 venv/
+__pycache__/*
