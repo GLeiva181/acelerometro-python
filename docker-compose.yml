@@ -1,23 +1,29 @@
 version: "3.9"
 
 services:
+
   acelerometro:
-    build: .
-    container_name: test-rp
-    privileged: true   # necesario para acceder a /dev/gpio en la Raspberry
-    ports:
-      - "5000:5000"   # host:container
+    build: ./svc-acel
+    container_name: acelerometro
+    privileged: true
     devices:
       - "/dev/mem:/dev/mem"
-      - "/dev/gpiomem:/dev/gpiomem"  # acceso a GPIO
-      - "/dev/gpiochip0:/dev/gpiochip0" # chip GPIO 0
-      - "/dev/gpiochip1:/dev/gpiochip1" # chip GPIO 1
-      - "/dev/spidev0.0:/dev/spidev0.0" # si usás SPI
+      - "/dev/gpiomem:/dev/gpiomem"
+      - "/dev/gpiochip0:/dev/gpiochip0"
+      - "/dev/gpiochip1:/dev/gpiochip1"
+      - "/dev/spidev0.0:/dev/spidev0.0"
       - "/dev/spidev0.1:/dev/spidev0.1"
     volumes:
-      - .:/app   # monta el código local para desarrollo
       - ./data:/app/data
       - /proc/device-tree:/proc/device-tree:ro
       - /sys:/sys:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  api:
+    build: ./svc-api
+    container_name: api
+    ports:
+      - "5000:5000"
     environment:
       - PYTHONUNBUFFERED=1
